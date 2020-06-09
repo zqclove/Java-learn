@@ -1,3 +1,7 @@
+
+
+[TOC]
+
 ## Java基础
 
 ## 一、Integer
