@@ -108,7 +108,7 @@ public static void main(String[] args) {
 
 当所有非守护线程结束时，程序也就终止，同时会杀死所有守护线程。
 
-main() 属于非守护线程。
+main() 属于非守护线程，GC属于守护线程。
 
 在线程启动之前使用 setDaemon() 方法可以将一个线程设置为守护线程。
 
@@ -123,7 +123,7 @@ public static void main(String[] args) {
 
 Thread.sleep(millisec) 方法会休眠当前正在执行的线程，millisec 单位为毫秒。
 
-sleep() 可能会抛出 InterruptedException，因为异常不能跨线程传播回 main() 中，因此必须在本地进行处理。线程中抛出的其它异常也同样需要在本地进行处理。
+**sleep() 可能会抛出 InterruptedException**，因为异常不能跨线程传播回 main() 中，因此必须在本地进行处理。线程中抛出的其它异常也同样需要在本地进行处理。
 
 ```java
 public void run() {
@@ -147,24 +147,556 @@ public void run() {
 
 ### 关于创建线程池的开发经验
 
-​		线程池**不允许**使用 Executors 去创建，而是通过 **ThreadPoolExecutor** 的方式，这样的处理方式让写的同学更加明确线程池的运行规则，规避资源耗尽的风险。
+#### ThreadPoolExecutor替代Executors
+
+线程池**不允许**使用 Executors 去创建，而是通过 **ThreadPoolExecutor** 的方式，这样的处理方式让写的同学更加明确线程池的运行规则，规避资源耗尽的风险。
 说明： Executors 返回的线程池对象的弊端如下：
 1） FixedThreadPool 和 SingleThreadPool :
 ​	允许的**请求队列**长度为 Integer.MAX_VALUE ，可能会堆积大量的请求，从而导致 OOM 。
 2） CachedThreadPool 和 ScheduledThreadPool :
 ​	允许的**创建线程**数量为 Integer.MAX_VALUE ，可能会创建大量的线程，从而导致 OOM 。
 
+这四种创建线程池的方式都是传递不同参数、不同策略给ThreadPoolExecutor去创建线程池，即预定义的创建线程池方式。
+
+```java
+	public ThreadPoolExecutor(int corePoolSize,	// 核心线程池大小
+                              int maximumPoolSize, // 最大线程池大小
+                              long keepAliveTime, // 线程最大空闲时间
+                              TimeUnit unit, // 时间单元（增加代码可读性）
+                              BlockingQueue<Runnable> workQueue, // 线程等待队列
+                              ThreadFactory threadFactory, // 线程创建工厂
+                              RejectedExecutionHandler handler) { // 拒绝策略
+        if (corePoolSize < 0 ||
+            maximumPoolSize <= 0 ||
+            maximumPoolSize < corePoolSize ||
+            keepAliveTime < 0)
+            throw new IllegalArgumentException();
+        if (workQueue == null || threadFactory == null || handler == null)
+            throw new NullPointerException();
+        this.acc = System.getSecurityManager() == null ?
+                null :
+                AccessController.getContext();
+        this.corePoolSize = corePoolSize;
+        this.maximumPoolSize = maximumPoolSize;
+        this.workQueue = workQueue;
+        this.keepAliveTime = unit.toNanos(keepAliveTime);
+        this.threadFactory = threadFactory;
+        this.handler = handler;
+    }
+```
+
+各参数文档解释：
+
+- corePoolSize：池中保留的线程数，即使它们是空闲的，除非设置了allowCoreThreadTimeOut。
+- maximumPoolSize：池中允许的最大线程数。
+- keepAliveTime：当线程数量大于核心线程数时，这是多余（临时）空闲线程在终止之前等待新任务的最大时间。（将转换成纳秒单位）
+- unit：keepAliveTime参数的时间单位。
+- workQueue：在执行任务之前用于保存任务的队列。此队列将只保存由execute方法提交的可运行任务。
+- threadFactory：执行程序创建新线程时要使用的工厂。
+- handler：当执行因达到线程边界和队列容量而阻塞时使用的处理程序。
+- 
+
+当一个任务通过execute(Runnable)方法欲添加到线程池时：
+
+1.如果线程池中线程数量小于corePoolSize，即使线程中的线程都处于空闲状态，也要创建新的线程来处理被添加的任务。
+
+2.如果线程池中线程数量等于corePoolSize，但是workQueue未满，那么任务被放入workQueue中。
+
+3.如果线程池中线程数量大于corePoolSize，即workQueue满（workQueue是有界队列），则判断线程数量是否小于maximumPoolSize，小于则创建新的线程来处理对应的任务（处理完后立即退出），大于则进入第4步。
+
+4.此时线程池等于maximumPoolSize，则按照给定的拒绝策略拒绝任务。
+
+#### 线程资源必须通过线程池提供
+
+线程资源必须通过线程池提供，不允许在应用中自行显式创建线程。
+使用线程池的好处是减少在创建和销毁线程上所消耗的时间以及系统资源的开销，解决资源不足的问题。如果不使用线程池，有可能造成系统创建大量同类线程而导致消耗完内存或者“过度切换”的问题。
+
+### 场景模拟
+
+**FixedThreadPool-线程池大小固定，任务队列无界**
+
+```java
+    public static ExecutorService newFixedThreadPool(int nThreads) {
+        return new ThreadPoolExecutor(nThreads, nThreads,
+                                      0L, TimeUnit.MILLISECONDS,
+                                      new LinkedBlockingQueue<Runnable>());
+    }
+```
+
+FixedThreadPool的优点是能够保证所有的任务都被执行，永远不会拒绝新的任务；同时缺点是队列数量没有限制，在任务执行时间无限延长的这种极端情况下会造成内存问题。
+
+适用场景：可用于Web服务瞬时削峰，但需注意长时间持续高峰情况造成的队列阻塞。
+
+**SingleThreadExecutor-线程池大小固定为1，任务队列无边界**
+
+```java
+    public static ExecutorService newSingleThreadExecutor() {
+        return new FinalizableDelegatedExecutorService
+            (new ThreadPoolExecutor(1, 1,
+                                    0L, TimeUnit.MILLISECONDS,
+                                    new LinkedBlockingQueue<Runnable>()));
+    }
+```
+
+这个工厂方法中使用无界LinkedBlockingQueue，并的将线程数设置成1，除此以外还使用FinalizableDelegatedExecutorService类进行了包装。这个包装类的主要目的是为了屏蔽ThreadPoolExecutor中动态修改线程数量的功能，仅保留ExecutorService中提供的方法。虽然是单线程处理，一旦线程因为处理异常等原因终止的时候，ThreadPoolExecutor会自动创建一个新的线程继续进行工作。
+
+```java
+	public static void main(String[] args) {
+        ExecutorService fixedExecutorService = Executors.newFixedThreadPool(1);
+        ThreadPoolExecutor threadPoolExecutor 
+       	     = (ThreadPoolExecutor) fixedExecutorService;
+        System.out.println(threadPoolExecutor.getMaximumPoolSize());
+        threadPoolExecutor.setCorePoolSize(8); // 动态修改线程池数量
+        
+        ExecutorService singleExecutorService = Executors.newSingleThreadExecutor();
+//      运行时异常 java.lang.ClassCastException
+//      ThreadPoolExecutor threadPoolExecutor2 = (ThreadPoolExecutor) singleExecutorService;
+    }
+
+```
+
+SingleThreadExecutor 适用于在逻辑上需要单线程处理任务的场景，同时无界的LinkedBlockingQueue保证新任务都能够放入队列，不会被拒绝；缺点和FixedThreadPool相同，当处理任务无限等待的时候会造成内存问题。
+
+**CachedThreadPool-线程池无限大（Integer.MAX_VALUE），等待队列长度为1**
+
+```java
+    public static ExecutorService newCachedThreadPool() {
+        return new ThreadPoolExecutor(0, Integer.MAX_VALUE,
+                                      60L, TimeUnit.SECONDS,
+                                      new SynchronousQueue<Runnable>());
+    }
+```
+
+SynchronousQueue是一个只有1个元素的队列，入队的任务需要一直等待直到队列中的元素被移出。核心线程数是0，意味着所有任务会先入队列；最大线程数是Integer.MAX_VALUE，可以认为线程数量是没有限制的。KeepAlive时间被设置成60秒，意味着在没有任务的时候线程等待60秒以后退出。CachedThreadPool对任务的处理策略是提交的任务会立即分配一个线程进行执行，线程池中线程数量会随着任务数的变化自动扩张和缩减，在任务执行时间无限延长的极端情况下会创建过多的线程。
+
+适用场景：快速处理大量耗时较短的任务，如Netty的NIO接受请求时，可使用CachedThreadPool。
+
 ## 三、中断机制
 
+一个线程执行完毕之后会自动结束，如果在运行过程中发生异常也会提前结束。
 
+### InterruptedException
+
+通过调用一个线程的 interrupt() 来中断该线程，如果该线程处于阻塞、限期等待或者无限期等待状态，那么就会抛出 InterruptedException，从而提前结束该线程。但是不能中断 I/O 阻塞和 synchronized 锁阻塞。
+
+对于以下代码，在 main() 中启动一个线程之后再中断它，由于线程中调用了 Thread.sleep() 方法，因此会抛出一个 InterruptedException，从而提前结束线程，不执行之后的语句。
+
+```java
+public class InterruptExample {
+
+    private static class MyThread1 extends Thread {
+        @Override
+        public void run() {
+            try {
+                Thread.sleep(2000);
+                System.out.println("Thread run");
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+```
+
+```java
+public static void main(String[] args) throws InterruptedException {
+    Thread thread1 = new MyThread1();
+    thread1.start();
+    thread1.interrupt();
+    System.out.println("Main run");
+}
+```
+
+```java
+Main run
+java.lang.InterruptedException: sleep interrupted
+    at java.lang.Thread.sleep(Native Method)
+    at InterruptExample.lambda$main$0(InterruptExample.java:5)
+    at InterruptExample$$Lambda$1/713338599.run(Unknown Source)
+    at java.lang.Thread.run(Thread.java:745)
+```
+
+### interrupted()
+
+如果一个线程的 run() 方法执行一个无限循环，并且没有执行 sleep() 等会抛出 InterruptedException 的操作，那么调用线程的 interrupt() 方法就无法使线程提前结束。
+
+但是调用 interrupt() 方法会设置线程的中断标记，此时调用 interrupted() 方法会返回 true。因此可以在循环体中使用 interrupted() 方法来判断线程是否处于中断状态，从而提前结束线程。
+
+```java
+public class InterruptExample {
+
+    private static class MyThread2 extends Thread {
+        @Override
+        public void run() {
+            while (!interrupted()) {
+                // ..
+            }
+            System.out.println("Thread end");
+        }
+    }
+}
+```
+
+```java
+public static void main(String[] args) throws InterruptedException {
+    Thread thread2 = new MyThread2();
+    thread2.start();
+    thread2.interrupt();
+}
+```
+
+```java
+Thread end
+```
+
+### Executor 的中断操作
+
+调用 Executor 的 shutdown() 方法会等待线程都执行完毕之后再关闭，但是如果调用的是 shutdownNow() 方法，则相当于调用每个线程的 interrupt() 方法。
+
+以下使用 Lambda 创建线程，相当于创建了一个匿名内部线程。
+
+```java
+public static void main(String[] args) {
+    ExecutorService executorService = Executors.newCachedThreadPool();
+    executorService.execute(() -> {
+        try {
+            Thread.sleep(2000);
+            System.out.println("Thread run");
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    });
+    executorService.shutdownNow();
+    System.out.println("Main run");
+}
+```
+
+```java
+Main run
+java.lang.InterruptedException: sleep interrupted
+    at java.lang.Thread.sleep(Native Method)
+    at ExecutorInterruptExample.lambda$main$0(ExecutorInterruptExample.java:9)
+    at ExecutorInterruptExample$$Lambda$1/1160460865.run(Unknown Source)
+    at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+    at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+    at java.lang.Thread.run(Thread.java:745)
+```
+
+如果只想中断 Executor 中的一个线程，可以通过使用 submit() 方法来提交一个线程，它会返回一个 Future<?> 对象，通过调用该对象的 cancel(true) 方法就可以中断线程。
+
+```java
+Future<?> future = executorService.submit(() -> {
+    // ..
+});	
+future.cancel(true);
+```
 
 ## 四、互斥同步
 
+Java 提供了两种锁机制来控制多个线程对共享资源的互斥访问，第一个是 JVM 实现的 synchronized，而另一个是 JDK 实现的 ReentrantLock。
 
+### synchronized
+
+#### **1. 同步一个代码块**
+
+```java
+public void func() {
+    synchronized (this) {
+        // ...
+    }
+}
+```
+
+**它只作用于同一个对象，如果调用两个对象上的同步代码块，就不会进行同步。**
+
+对于以下代码，使用 ExecutorService 执行了两个线程，由于调用的是同一个对象的同步代码块，因此这两个线程会进行同步，当一个线程进入同步语句块时，另一个线程就必须等待。
+
+```java
+public class SynchronizedExample {
+
+    public void func1() {
+        synchronized (this) {
+            for (int i = 0; i < 10; i++) {
+                System.out.print(i + " ");
+            }
+        }
+    }
+    public static void main(String[] args) {
+        SynchronizedExample e1 = new SynchronizedExample();
+        ExecutorService executorService = Executors.newCachedThreadPool();
+   	    executorService.execute(() -> e1.func1());
+  	  	executorService.execute(() -> e1.func1());
+	}
+}
+//0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9
+```
+
+对于以下代码，两个线程调用了不同对象的同步代码块，因此这两个线程就不需要同步。从输出结果可以看出，两个线程交叉执行。
+
+```java
+public static void main(String[] args) {
+    SynchronizedExample e1 = new SynchronizedExample();
+    SynchronizedExample e2 = new SynchronizedExample();
+    ExecutorService executorService = Executors.newCachedThreadPool();
+    executorService.execute(() -> e1.func1());
+    executorService.execute(() -> e2.func1());
+}
+//0 0 1 1 2 2 3 3 4 4 5 5 6 6 7 7 8 8 9 9
+```
+
+#### **2. 同步一个方法**
+
+```java
+public synchronized void func () {
+    // ...
+}
+```
+
+它和同步代码块一样，作用于同一个对象。
+
+#### **3. 同步一个类**
+
+```java
+public void func() {
+    synchronized (SynchronizedExample.class) {
+        // ...
+    }
+}
+```
+
+作用于整个类，也就是说两个线程调用同一个类的不同对象上的这种同步语句，也会进行同步。
+
+```java
+public class SynchronizedExample {
+
+    public void func2() {
+        synchronized (SynchronizedExample.class) {
+            for (int i = 0; i < 10; i++) {
+                System.out.print(i + " ");
+            }
+        }
+    }
+    public static void main(String[] args) {
+    	SynchronizedExample e1 = new SynchronizedExample();
+    	SynchronizedExample e2 = new SynchronizedExample();
+    	ExecutorService executorService = Executors.newCachedThreadPool();
+    	executorService.execute(() -> e1.func2());
+    	executorService.execute(() -> e2.func2());
+	}
+}
+//0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9
+```
+
+**4. 同步一个静态方法**
+
+```java
+public synchronized static void fun() {
+    // ...
+}
+```
+
+作用于整个类。
+
+### ReentrantLock
+
+ReentrantLock 是 java.util.concurrent（J.U.C）包中的锁。
+
+```java
+public class LockExample {
+
+    private Lock lock = new ReentrantLock();
+
+    public void func() {
+        lock.lock();
+        try {
+            for (int i = 0; i < 10; i++) {
+                System.out.print(i + " ");
+            }
+        } finally {
+            lock.unlock(); // 确保释放锁，从而避免发生死锁。
+        }
+    }
+    public static void main(String[] args) {
+    	LockExample lockExample = new LockExample();
+    	ExecutorService executorService = Executors.newCachedThreadPool();
+    	executorService.execute(() -> lockExample.func());
+    	executorService.execute(() -> lockExample.func());
+	}
+}
+//0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9
+```
+
+### 比较
+
+#### **1. 锁的实现**
+
+synchronized 是 JVM 实现的，而 ReentrantLock 是 JDK 实现的。
+
+#### **2. 性能**
+
+新版本 Java 对 synchronized 进行了很多优化，例如自旋锁等，synchronized 与 ReentrantLock 大致相同。
+
+#### **3. 等待可中断**
+
+当持有锁的线程长期不释放锁的时候，正在等待的线程可以选择放弃等待，改为处理其他事情。
+
+ReentrantLock 可中断，而 synchronized 不行。
+
+#### **4. 公平锁**
+
+公平锁是指多个线程在等待同一个锁时，必须按照申请锁的时间顺序来依次获得锁。
+
+synchronized 中的锁是非公平的，ReentrantLock 默认情况下也是非公平的，但是也可以是公平的。
+
+#### **5. 锁绑定多个条件**
+
+一个 ReentrantLock 可以同时绑定多个 Condition 对象。
+
+### 使用选择
+
+除非需要使用 ReentrantLock 的高级功能，否则优先使用 synchronized。这是因为 synchronized 是  JVM 实现的一种锁机制，JVM 原生地支持它，而 ReentrantLock 不是所有的 JDK 版本都支持。并且使用  synchronized 不用担心没有释放锁而导致死锁问题，因为 JVM 会确保锁的释放。
 
 ## 五、线程之间的协作
 
+当多个线程可以一起工作去解决某个问题时，如果某些部分必须在其它部分之前完成，那么就需要对线程进行协调。
 
+### join()
+
+在线程中调用另一个线程的 join() 方法，会将当前线程挂起，而不是忙等待，直到目标线程结束。
+
+对于以下代码，虽然 b 线程先启动，但是因为在 b 线程中调用了 a 线程的 join() 方法，b 线程会等待 a 线程结束才继续执行，因此最后能够保证 a 线程的输出先于 b 线程的输出。
+
+```java
+public class JoinExample {
+
+    private class A extends Thread {
+        @Override
+        public void run() {
+            System.out.println("A");
+        }
+    }
+
+    private class B extends Thread {
+
+        private A a;
+
+        B(A a) {
+            this.a = a;
+        }
+
+        @Override
+        public void run() {
+            try {
+                a.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println("B");
+        }
+    }
+
+    public void test() {
+        A a = new A();
+        B b = new B(a);
+        b.start();
+        a.start();
+    }
+    public static void main(String[] args) {
+    	JoinExample example = new JoinExample();
+    	example.test();
+	}
+}
+//A
+//B
+```
+
+### wait() notify() notifyAll()
+
+调用 wait() 使得线程等待某个条件满足，线程在等待时会被挂起，当其他线程的运行使得这个条件满足时，其它线程会调用 notify() 或者 notifyAll() 来唤醒挂起的线程。
+
+它们都属于 Object 的一部分，而不属于 Thread。
+
+只能用在同步方法或者同步控制块中使用，否则会在运行时抛出 IllegalMonitorStateException。
+
+使用 wait() 挂起期间，线程会释放锁。这是因为，如果没有释放锁，那么其它线程就无法进入对象的同步方法或者同步控制块中，那么就无法执行 notify() 或者 notifyAll() 来唤醒挂起的线程，造成死锁。
+
+```java
+public class WaitNotifyExample {
+
+    public synchronized void before() {
+        System.out.println("before");
+        notifyAll();
+    }
+
+    public synchronized void after() {
+        try {
+            wait();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        System.out.println("after");
+    }
+    public static void main(String[] args) {
+    	ExecutorService executorService = Executors.newCachedThreadPool();
+    	WaitNotifyExample example = new WaitNotifyExample();
+    	executorService.execute(() -> example.after());
+    	executorService.execute(() -> example.before());
+	}
+}
+before
+after
+```
+
+**wait() 和 sleep() 的区别**
+
+- wait() 是 Object 的方法，而 sleep() 是 Thread 的静态方法；
+- wait() 会释放锁，sleep() 不会。
+
+### await() signal() signalAll()
+
+java.util.concurrent 类库中提供了 Condition 类来实现线程之间的协调，可以在 Condition 上调用 await() 方法使线程等待，其它线程调用 signal() 或 signalAll() 方法唤醒等待的线程。
+
+相比于 wait() 这种等待方式，await() 可以指定等待的条件，因此更加灵活。
+
+使用 Lock 来获取一个 Condition 对象。
+
+```java
+public class AwaitSignalExample {
+
+    private Lock lock = new ReentrantLock();
+    private Condition condition = lock.newCondition();
+
+    public void before() {
+        lock.lock();
+        try {
+            System.out.println("before");
+            condition.signalAll();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void after() {
+        lock.lock();
+        try {
+            condition.await();
+            System.out.println("after");
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } finally {
+            lock.unlock();
+        }
+    }
+    public static void main(String[] args) {
+    	ExecutorService executorService = Executors.newCachedThreadPool();
+    	AwaitSignalExample example = new AwaitSignalExample();
+    	executorService.execute(() -> example.after());
+    	executorService.execute(() -> example.before());
+	}
+}
+//before
+//after
+```
 
 ## 六、线程状态
 
