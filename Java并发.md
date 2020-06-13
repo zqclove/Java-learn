@@ -464,7 +464,7 @@ public void func() {
 }
 ```
 
-作用于整个类，也就是说两个线程调用同一个类的不同对象上的这种同步语句，也会进行同步。
+作用于整个类，也就是说两个线程调用**同一个类的不同对象**上的这种同步语句，也会进行同步。
 
 ```java
 public class SynchronizedExample {
@@ -556,6 +556,10 @@ synchronized 中的锁是非公平的，ReentrantLock 默认情况下也是非�
 
 除非需要使用 ReentrantLock 的高级功能，否则优先使用 synchronized。这是因为 synchronized 是  JVM 实现的一种锁机制，JVM 原生地支持它，而 ReentrantLock 不是所有的 JDK 版本都支持。并且使用  synchronized 不用担心没有释放锁而导致死锁问题，因为 JVM 会确保锁的释放。
 
+### 可重入锁理解
+
+
+
 ## 五、线程之间的协作
 
 当多个线程可以一起工作去解决某个问题时，如果某些部分必须在其它部分之前完成，那么就需要对线程进行协调。
@@ -612,13 +616,13 @@ public class JoinExample {
 
 ### wait() notify() notifyAll()
 
-调用 wait() 使得线程等待某个条件满足，线程在等待时会被挂起，当其他线程的运行使得这个条件满足时，其它线程会调用 notify() 或者 notifyAll() 来唤醒挂起的线程。
+调用 wait() 使得线程等待某个条件满足，线程在等待时会被**挂起**，当其他线程的运行使得这个条件满足时，其它线程会调用 notify() 或者 notifyAll() 来**唤醒挂起的线程**。
 
 它们都属于 Object 的一部分，而不属于 Thread。
 
 只能用在同步方法或者同步控制块中使用，否则会在运行时抛出 IllegalMonitorStateException。
 
-使用 wait() 挂起期间，线程会释放锁。这是因为，如果没有释放锁，那么其它线程就无法进入对象的同步方法或者同步控制块中，那么就无法执行 notify() 或者 notifyAll() 来唤醒挂起的线程，造成死锁。
+使用 **wait() 挂起期间，线程会释放锁**。这是因为，如果没有释放锁，那么其它线程就无法进入对象的同步方法或者同步控制块中，那么就无法执行 notify() 或者 notifyAll() 来唤醒挂起的线程，造成死锁。
 
 ```java
 public class WaitNotifyExample {
@@ -664,39 +668,121 @@ java.util.concurrent 类库中提供了 Condition 类来实现线程之间的协
 public class AwaitSignalExample {
 
     private Lock lock = new ReentrantLock();
-    private Condition condition = lock.newCondition();
+    private Condition acondition = lock.newCondition(); // 可以指定等待的条件，更加灵活
+	private Condition bcondition = lock.newCondition();
 
-    public void before() {
+    public void signalX() {
         lock.lock();
         try {
-            System.out.println("before");
-            condition.signalAll();
+            System.out.println("signalX");
+			acondition.signal();         //唤醒等待acondition的线程，执行await()后面的代码
+			bcondition.signal();		 //唤醒等待bcondition的线程，执行await()后面的代码
+			System.out.println("after signal");
+//			acondition.signalAll();
         } finally {
             lock.unlock();
         }
     }
 
-    public void after() {
-        lock.lock();
-        try {
-            condition.await();
-            System.out.println("after");
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        } finally {
-            lock.unlock();
-        }
-    }
-    public static void main(String[] args) {
-    	ExecutorService executorService = Executors.newCachedThreadPool();
-    	AwaitSignalExample example = new AwaitSignalExample();
-    	executorService.execute(() -> example.after());
-    	executorService.execute(() -> example.before());
+    private void afunc() {
+		lock.lock();
+		try {
+			acondition.await();
+			System.out.println("A");
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		} finally {
+			lock.unlock();
+		}
+
+	}
+
+	private void bfunc() {
+		lock.lock();
+		try {
+			bcondition.await();
+			System.out.println("B");
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		} finally {
+			lock.unlock();
+		}
+
+	}
+
+	public static void main(String[] args) {
+		AwatiAndSignal aas = new AwatiAndSignal();
+		ExecutorService executorService = Executors.newCachedThreadPool();
+		executorService.execute(() -> aas.afunc());
+		executorService.execute(() -> aas.bfunc());
+		executorService.execute(() -> aas.signalX());
+		
+		executorService.shutdown();
 	}
 }
-//before
-//after
 ```
+
+**遇到的问题**
+
+1.根据如上代码，有时两个func（）都能执行await（）后面的代码，有时只能是其中一个。
+
+2.如果执行signalX（）方法的线程先获取到锁（并且只有一个），那么func（）方法将永远不能被唤醒。而使用Object的wait（）和notify（）则不出现此状况。
+
+**原因分析**
+
+1.afunc（）、bfunc（）和signalx（）三个线程在争取锁的顺序决定最后输出结果。不同的执行顺序决定不同的结果。
+
+2.可能是signalX（）和func（）方法是普通方法，在方法内进行锁操作，而Object的例子是同步方法的方式。
+
+### 知识扩展
+
+**wait（）方法相关**
+
+当前线程必须拥有该对象的监视器（锁机制中的monitor）。该线程释放该监视器的所有权，并等待另一个线程通
+
+过调用notify方法或notifyAll方法通知等待该对象监视器的线程。然后线程等待，直到它可以重新获得监视器的所
+
+有权并继续执行。
+
+线程在调用wait（）时，
+
+```java
+public final void wait() throws InterruptedException {
+    wait(0);
+}
+```
+
+wait（）方法调用本地方法wait（long），该方法可以给线程添加等待时间，当达到等待时间后重新获得监视器的所有权并继续执行。参数为0则不设置等待时间。
+
+此方法导致当前线程(称线程T)将自己置于该对象的等待集中，然后放弃该对象上的任何和所有同步声明。为了线程调度的目的，线程T被禁用，处于休眠状态，直到发生以下四件事之一:
+
+- 其他一些线程调用这个对象的notify方法，线程T正好被任意选择为要被唤醒的线程。
+- 其他一些线程调用此对象的notifyAll方法。
+
+- 其他一些线程中断线程T。
+- 指定的等待时间已到。但是，如果超时为零，则不考虑时间，线程只是等待，直到得到通知。
+
+**notify（）和notifyAll（）**
+
+notify（）和notifyAll（）都作用于对象级别上的锁，不是同一对象将不会被唤醒。
+
+**notifyAll（）：**唤醒在该对象监视器上等待的所有线程。线程通过调用其中一个等待方法来等待对象的监视器。
+
+此方法只能由该对象监视器的所有者线程调用。有关线程成为监视器所有者的方法，请参阅notify方法。
+
+**notify（）：**唤醒在该对象监视器上等待的单个线程。如果有任何线程在等待该对象，则选择其中一个被唤醒。**选择是任意的，由实现自行决定**。线程通过调用其中一个等待方法来等待对象的监视器。
+
+此方法只能由该对象监视器的所有者线程调用。线程通过以下三种方式之一成为对象监视器的所有者:
+
+- 通过执行该对象的同步实例方法。
+
+- 通过执行在对象上同步的同步语句的主体。
+
+- 对于类类型的对象，通过执行该类的同步静态方法。
+
+一次只能有一个线程拥有对象的监视器。
+
+**共同点：**被唤醒的线程将无法继续操作，直到当前线程放弃该对象上的锁。**被唤醒的线程将以通常的方式与其他可能在此对象上积极竞争同步的线程竞争**;例如，被唤醒的线程在成为下一个锁定该对象的线程时没有可靠的特权或不利因素。
 
 ## 六、线程状态
 
