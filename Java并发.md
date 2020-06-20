@@ -487,7 +487,7 @@ public class SynchronizedExample {
 //0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9
 ```
 
-**4. 同步一个静态方法**
+#### **4. 同步一个静态方法**
 
 ```java
 public synchronized static void fun() {
@@ -558,7 +558,7 @@ synchronized 中的锁是非公平的，ReentrantLock 默认情况下也是非�
 
 ### 可重入锁理解
 
-
+ReentrantLock翻译过来为可重入锁，它的可重入性表现在同一个线程可以多次获得锁，而不同线程依然不可多次获得锁。ReentrantLock分为公平锁和非公平锁，公平锁保证等待时间最长的线程将优先获得锁，而非公平锁并不会保证多个线程获得锁的顺序，但是非公平锁的并发性能表现更好，ReentrantLock默认使用非公平锁。
 
 ## 五、线程之间的协作
 
@@ -736,7 +736,7 @@ public class AwaitSignalExample {
 
 ### 知识扩展
 
-**wait（）方法相关**
+#### **wait（）方法相关**
 
 当前线程必须拥有该对象的监视器（锁机制中的monitor）。该线程释放该监视器的所有权，并等待另一个线程通
 
@@ -762,7 +762,7 @@ wait（）方法调用本地方法wait（long），该方法可以给线程添�
 - 其他一些线程中断线程T。
 - 指定的等待时间已到。但是，如果超时为零，则不考虑时间，线程只是等待，直到得到通知。
 
-**notify（）和notifyAll（）**
+#### **notify（）和notifyAll（）**
 
 notify（）和notifyAll（）都作用于对象级别上的锁，不是同一对象将不会被唤醒。
 
@@ -770,7 +770,7 @@ notify（）和notifyAll（）都作用于对象级别上的锁，不是同一�
 
 此方法只能由该对象监视器的所有者线程调用。有关线程成为监视器所有者的方法，请参阅notify方法。
 
-**notify（）：**唤醒在该对象监视器上等待的单个线程。如果有任何线程在等待该对象，则选择其中一个被唤醒。**选择是任意的，由实现自行决定**。线程通过调用其中一个等待方法来等待对象的监视器。
+**notify（）：**唤醒在该对象监视器上等待的单个线程。如果有多个线程在等待该对象，则选择其中一个被唤醒。**选择是任意的，由实现自行决定**。线程通过调用其中一个等待方法来等待对象的监视器。
 
 此方法只能由该对象监视器的所有者线程调用。线程通过以下三种方式之一成为对象监视器的所有者:
 
@@ -786,11 +786,169 @@ notify（）和notifyAll（）都作用于对象级别上的锁，不是同一�
 
 ## 六、线程状态
 
+一个线程只能处于一种状态，并且这里的线程状态特指 Java 虚拟机的线程状态，不能反映线程在特定操作系统下的状态。
 
+### 新建（NEW）
+
+创建后尚未启动。
+
+### 可运行（RUNABLE）
+
+正在 Java 虚拟机中运行。但是在操作系统层面，它可能处于运行状态，也可能等待资源调度（例如处理器资源），资源调度完成就进入运行状态。所以该状态的可运行是指可以被运行，具体有没有运行要看底层操作系统的资源调度。
+
+### 阻塞（BLOCKED）
+
+请求获取 monitor lock 从而进入 synchronized 函数或者代码块，但是其它线程已经占用了该 monitor lock，所以处于阻塞状态。要结束该状态进入从而 RUNABLE 需要其他线程释放 monitor lock。
+
+### 无限期等待（WAITING）
+
+等待其它线程显式地唤醒。
+
+阻塞和等待的区别在于，阻塞是被动的，它是在等待获取 monitor lock。而等待是主动的，通过调用  Object.wait() 等方法进入。
+
+| 进入方法                                   | 退出方法                             |
+| ------------------------------------------ | ------------------------------------ |
+| 没有设置 Timeout 参数的 Object.wait() 方法 | Object.notify() / Object.notifyAll() |
+| 没有设置 Timeout 参数的 Thread.join() 方法 | 被调用的线程执行完毕                 |
+| LockSupport.park() 方法                    | LockSupport.unpark(Thread)           |
+
+### 限期等待（TIMED_WAITING）
+
+无需等待其它线程显式地唤醒，在一定时间之后会被系统自动唤醒。
+
+| 进入方法                                 | 退出方法                                        |
+| ---------------------------------------- | ----------------------------------------------- |
+| Thread.sleep() 方法                      | 时间结束                                        |
+| 设置了 Timeout 参数的 Object.wait() 方法 | 时间结束 / Object.notify() / Object.notifyAll() |
+| 设置了 Timeout 参数的 Thread.join() 方法 | 时间结束 / 被调用的线程执行完毕                 |
+| LockSupport.parkNanos() 方法             | LockSupport.unpark(Thread)                      |
+| LockSupport.parkUntil() 方法             | LockSupport.unpark(Thread)                      |
+
+调用 Thread.sleep() 方法使线程进入限期等待状态时，常常用“使一个线程睡眠”进行描述。调用 Object.wait()  方法使线程进入限期等待或者无限期等待时，常常用“挂起一个线程”进行描述。睡眠和挂起是用来描述行为，而阻塞和等待用来描述状态。
+
+### 死亡（TERMINATED）
+
+可以是线程结束任务之后自己结束，或者产生了异常而结束。
+
+[Java SE 9 Enum Thread.State](https://docs.oracle.com/javase/9/docs/api/java/lang/Thread.State.html)
 
 ## 七、J.U.C
 
+ava.util.concurrent（J.U.C）大大提高了并发性能，AQS 被认为是 J.U.C 的核心。
 
+### CountDownLatch
+
+用来控制一个或者多个线程等待多个线程。
+
+维护了一个计数器 cnt，每次调用 countDown() 方法会让计数器的值减 1，减到 0 的时候，那些因为调用 await() 方法而在等待的线程就会被唤醒。
+
+ [![img](https://camo.githubusercontent.com/c2a94b75d7379c204996f24411a9c497125cfa06/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f62613037383239312d373931652d343337382d623664312d6563653736633266306231342e706e67)](https://camo.githubusercontent.com/c2a94b75d7379c204996f24411a9c497125cfa06/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f62613037383239312d373931652d343337382d623664312d6563653736633266306231342e706e67) 
+
+
+
+```java
+public class CountdownLatchExample {
+
+    public static void main(String[] args) throws InterruptedException {
+        final int totalThread = 10;
+        CountDownLatch countDownLatch = new CountDownLatch(totalThread);
+        ExecutorService executorService = Executors.newCachedThreadPool();
+        for (int i = 0; i < totalThread; i++) {
+            executorService.execute(() -> {
+                System.out.print("run..");
+                countDownLatch.countDown();
+            });
+        }
+        countDownLatch.await();
+        System.out.println("end");
+        executorService.shutdown();
+    }
+}
+//run..run..run..run..run..run..run..run..run..run..end
+```
+
+### CyclicBarrier
+
+用来控制多个线程互相等待，只有当多个线程都到达时，这些线程才会继续执行。
+
+和 CountdownLatch 相似，都是通过维护计数器来实现的。线程执行 await() 方法之后计数器会减 1，并进行等待，直到计数器为 0，所有调用 await() 方法而在等待的线程才能继续执行。
+
+CyclicBarrier 和 CountdownLatch 的一个区别是，CyclicBarrier 的计数器通过调用 reset() 方法可以循环使用，所以它才叫做循环屏障。
+
+CyclicBarrier 有两个构造函数，其中 parties 指示计数器的初始值，barrierAction 在所有线程都到达屏障的时候会执行一次。
+
+```java
+public CyclicBarrier(int parties, Runnable barrierAction) {
+    if (parties <= 0) throw new IllegalArgumentException();
+    this.parties = parties;
+    this.count = parties;
+    this.barrierCommand = barrierAction;
+}
+
+public CyclicBarrier(int parties) {
+    this(parties, null);
+}
+```
+
+ [![img](https://camo.githubusercontent.com/10dd07a9c7828fab8f68a0f953755869dc286a8e/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f66373161663636622d306435342d343339392d613434622d6634376235383332313938342e706e67)](https://camo.githubusercontent.com/10dd07a9c7828fab8f68a0f953755869dc286a8e/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f66373161663636622d306435342d343339392d613434622d6634376235383332313938342e706e67) 
+
+
+
+```java
+public class CyclicBarrierExample {
+
+    public static void main(String[] args) {
+        final int totalThread = 10;
+        CyclicBarrier cyclicBarrier = new CyclicBarrier(totalThread);
+        ExecutorService executorService = Executors.newCachedThreadPool();
+        for (int i = 0; i < totalThread; i++) {
+            executorService.execute(() -> {
+                System.out.print("before..");
+                try {
+                    cyclicBarrier.await();
+                } catch (InterruptedException | BrokenBarrierException e) {
+                    e.printStackTrace();
+                }
+                System.out.print("after..");
+            });
+        }
+        executorService.shutdown();
+    }
+}
+//before..before..before..before..before..before..before..before..before..before..after..after..after..after..after..after..after..after..after..after..
+```
+
+### Semaphore
+
+Semaphore 类似于操作系统中的信号量，可以控制对互斥资源的访问线程数。
+
+以下代码模拟了对某个服务的并发请求，每次只能有 3 个客户端同时访问，请求总数为 10。
+
+```java
+public class SemaphoreExample {
+
+    public static void main(String[] args) {
+        final int clientCount = 3;
+        final int totalRequestCount = 10;
+        Semaphore semaphore = new Semaphore(clientCount);
+        ExecutorService executorService = Executors.newCachedThreadPool();
+        for (int i = 0; i < totalRequestCount; i++) {
+            executorService.execute(()->{
+                try {
+                    semaphore.acquire();
+                    System.out.print(semaphore.availablePermits() + " ");
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } finally {
+                    semaphore.release();
+                }
+            });
+        }
+        executorService.shutdown();
+    }
+}
+//2 1 2 2 2 2 2 1 2 2
+```
 
 ## 八、线程安全问题
 
