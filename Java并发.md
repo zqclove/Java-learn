@@ -950,9 +950,694 @@ public class SemaphoreExample {
 //2 1 2 2 2 2 2 1 2 2
 ```
 
+### J.U.C - 其它组件
+
+#### FutureTask
+
+在介绍 Callable 时我们知道它可以有返回值，返回值通过 Future 进行封装。FutureTask 实现了  RunnableFuture 接口，该接口继承自 Runnable 和 Future 接口，这使得 FutureTask  既可以当做一个任务执行，也可以有返回值。
+
+```java
+public class FutureTask<V> implements RunnableFuture<V>
+public interface RunnableFuture<V> extends Runnable, Future<V>
+```
+
+**FutureTask 可用于异步获取执行结果或取消执行任务的场景。**当一个计算任务需要执行很长时间，那么就可以用 FutureTask 来封装这个任务，主线程在完成自己的任务之后再去获取结果。
+
+```java
+public class FutureTaskExample {
+
+    public static void main(String[] args) throws ExecutionException, InterruptedException {
+        FutureTask<Integer> futureTask = new FutureTask<Integer>(new Callable<Integer>() {
+            @Override
+            public Integer call() throws Exception {
+                int result = 0;
+                for (int i = 0; i < 100; i++) {
+                    Thread.sleep(10);
+                    result += i;
+                }
+                return result;
+            }
+        });
+
+        Thread computeThread = new Thread(futureTask);
+        computeThread.start();
+
+        Thread otherThread = new Thread(() -> {
+            System.out.println("other task is running...");
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+        otherThread.start();
+        System.out.println(futureTask.get());
+    }
+}
+//other task is running...
+//4950
+```
+
+#### BlockingQueue
+
+java.util.concurrent.BlockingQueue 接口有以下阻塞队列的实现：
+
+- **FIFO 队列**  ：LinkedBlockingQueue、ArrayBlockingQueue（固定长度）
+- **优先级队列**  ：PriorityBlockingQueue
+
+提供了阻塞的 take() 和 put() 方法：如果队列为空 take() 将阻塞，直到队列中有内容；如果队列为满 put() 将阻塞，直到队列有空闲位置。
+
+**使用 BlockingQueue 实现生产者消费者问题**
+
+```java
+public class ProducerConsumer {
+
+    private static BlockingQueue<String> queue = new ArrayBlockingQueue<>(5);
+
+    private static class Producer extends Thread {
+        @Override
+        public void run() {
+            try {
+                queue.put("product");
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.print("produce..");
+        }
+    }
+
+    private static class Consumer extends Thread {
+
+        @Override
+        public void run() {
+            try {
+                String product = queue.take();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.print("consume..");
+        }
+    }
+}
+public static void main(String[] args) {
+    for (int i = 0; i < 2; i++) {
+        Producer producer = new Producer();
+        producer.start();
+    }
+    for (int i = 0; i < 5; i++) {
+        Consumer consumer = new Consumer();
+        consumer.start();
+    }
+    for (int i = 0; i < 3; i++) {
+        Producer producer = new Producer();
+        producer.start();
+    }
+}
+//produce..produce..consume..consume..produce..consume..produce..consume..produce..consume..
+```
+
+##### 遇到的问题
+
+```java
+Produce..1
+Produce..2
+consume..3
+consume..4
+Produce..5
+consume..6
+consume..7
+Produce..8
+Produce..9
+consume..10
+```
+
+输出结果表示消费者在队列为空时产生了消费行为。猜测是消费者在方法内更快的输出结果。
+
+##### 源码分析
+
+###### **ArrayBlockingQueue**
+
+除了不需要集合作参数的构造函数，其他读写方法都使用ReentrantLock锁加锁。
+
+**enqueue（）方法：**插入元素在当前位置，前进，和信号。只在持有锁时调用。
+
+```java
+    private void enqueue(E x) {
+        // assert lock.getHoldCount() == 1;
+        // assert items[putIndex] == null;
+        final Object[] items = this.items;
+        items[putIndex] = x;
+        if (++putIndex == items.length)
+            putIndex = 0;	//为什么要将putIndex置0？答：因为dequeue从队列头部获取元素，所以当队列满后需要从队列头部重新插入
+        count++;
+        notEmpty.signal();
+    }
+```
+
+**dequeue（）方法：**提取元素在当前采取位置，前进，和信号。只在持有锁时调用。
+
+```java
+    private E dequeue() {
+        // assert lock.getHoldCount() == 1;
+        // assert items[takeIndex] != null;
+        final Object[] items = this.items;
+        @SuppressWarnings("unchecked")
+        E x = (E) items[takeIndex];
+        items[takeIndex] = null;
+        if (++takeIndex == items.length)
+            takeIndex = 0;
+        count--;
+        if (itrs != null)
+            itrs.elementDequeued();
+        notFull.signal();
+        return x;
+    }
+```
+
+**put（）方法：**将元素插入队列队尾，如果队列已满，则阻塞直到队列有空闲位置。
+
+```java
+    public void put(E e) throws InterruptedException {
+        checkNotNull(e);
+        final ReentrantLock lock = this.lock;
+        lock.lockInterruptibly();
+        try {
+            while (count == items.length)
+                notFull.await();
+            enqueue(e);
+        } finally {
+            lock.unlock();
+        }
+    }
+```
+
+**add（）方法：**如果可以在不超过队列容量的情况下立即在队列尾部插入指定的元素，成功时返回true，如果队列已满，则抛出IllegalStateException异常。
+
+```java
+    public boolean add(E e) {
+        return super.add(e);
+    }
+	//父类AbstractQueue的add方法
+    public boolean add(E e) {
+        if (offer(e))
+            return true;
+        else
+            throw new IllegalStateException("Queue full");
+    }
+```
+
+**offer（）方法：**如果可以在不超过队列容量的情况下立即在队列尾部插入指定的元素，成功时返回true，如果队列已满则返回false。这个方法通常比add方法更好，后者只有通过抛出异常才能插入元素。
+
+```java
+    public boolean offer(E e) {
+        checkNotNull(e);
+        final ReentrantLock lock = this.lock;
+        lock.lock();
+        try {
+            if (count == items.length)
+                return false;
+            else {
+                enqueue(e);
+                return true;
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+```
+
+**take（）方法：**检查并且出队头元素，如果队列为空则阻塞直到有元素入队。
+
+```java
+  public E take() throws InterruptedException {
+        final ReentrantLock lock = this.lock;
+        lock.lockInterruptibly();
+        try {
+            while (count == 0)
+                notEmpty.await();
+            return dequeue();
+        } finally {
+            lock.unlock();
+        }
+    }
+```
+
+**poll（）方法：**检查并出队头元素，如果队列为空则返回null。
+
+```java
+public E poll() {
+        final ReentrantLock lock = this.lock;
+        lock.lock();
+        try {
+            return (count == 0) ? null : dequeue();
+        } finally {
+            lock.unlock();
+        }
+    }
+```
+
+**poll（long，TimeUnit）方法：**同poll（）方法，多了时间参数，用于设置等待时间。
+
+```java
+    public E poll(long timeout, TimeUnit unit) throws InterruptedException {
+        long nanos = unit.toNanos(timeout);
+        final ReentrantLock lock = this.lock;
+        lock.lockInterruptibly();
+        try {
+            while (count == 0) {
+                if (nanos <= 0)
+                    return null;
+                nanos = notEmpty.awaitNanos(nanos);//该方法返回值：nanosTimeout值的估计值减去等待该方法返回所花费的时间。可以使用一个正值作为该方法的后续调用的参数，以完成所需的等待时间。小于或等于0的值表示没有剩余时间。
+            }
+            return dequeue();
+        } finally {
+            lock.unlock();
+        }
+    }
+```
+
+**peek（）方法：**检索但不删除此队列的头，或如果此队列为空，则返回null。
+
+```java
+    public E peek() {
+        final ReentrantLock lock = this.lock;
+        lock.lock();
+        try {
+            return itemAt(takeIndex); // null when queue is empty
+        } finally {
+            lock.unlock();
+        }
+    }
+```
+
+**drainTo（）方法：**从此队列（most）删除给定数量的可用元素，并将它们添加到给定集合中。在尝试向集合c添加元素时遇到的失败可能导致在抛出关联异常时，元素既不在集合中，也不在集合中。试图将队列排空到自身会导致IllegalArgumentException异常。此外，如果在操作过程中修改了指定的集合，则此操作的行为是未定义的。
+
+```java
+    public int drainTo(Collection<? super E> c, int maxElements) {
+        checkNotNull(c);
+        if (c == this)
+            throw new IllegalArgumentException();
+        if (maxElements <= 0)
+            return 0;
+        final Object[] items = this.items;
+        final ReentrantLock lock = this.lock;
+        lock.lock();
+        try {
+            int n = Math.min(maxElements, count);
+            int take = takeIndex;
+            int i = 0;
+            try {
+                while (i < n) {
+                    @SuppressWarnings("unchecked")
+                    E x = (E) items[take];
+                    c.add(x);
+                    items[take] = null;
+                    if (++take == items.length)
+                        take = 0;
+                    i++;
+                }
+                return n;
+            } finally {
+                // Restore invariants even if c.add() threw
+                if (i > 0) {
+                    count -= i;
+                    takeIndex = take;
+                    if (itrs != null) {
+                        if (count == 0)
+                            itrs.queueIsEmpty();
+                        else if (i > take)
+                            itrs.takeIndexWrapped();
+                    }
+                    for (; i > 0 && lock.hasWaiters(notFull); i--)
+                        notFull.signal();
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+```
+
+**ArrayBlockingQueue构造方法：**带参构造方法，可以直接将集合中的元素放入队列中。
+
+```
+    public ArrayBlockingQueue(int capacity, boolean fair,//fair标志是否开启公平锁
+                              Collection<? extends E> c) {
+        this(capacity, fair);
+
+        final ReentrantLock lock = this.lock;
+        lock.lock(); // Lock only for visibility, not mutual exclusion
+        try {
+            int i = 0;
+            try {
+                for (E e : c) {
+                    checkNotNull(e);
+                    items[i++] = e;
+                }
+            } catch (ArrayIndexOutOfBoundsException ex) {
+                throw new IllegalArgumentException();
+            }
+            count = i;
+            putIndex = (i == capacity) ? 0 : i;
+        } finally {
+            lock.unlock();
+        }
+    }
+```
+
+
+
+#### ForkJoin
+
+主要用于并行计算中，和 MapReduce 原理类似，都是把大的计算任务拆分成多个小任务并行计算。
+
+```java
+public class ForkJoinExample extends RecursiveTask<Integer> {
+
+    private final int threshold = 5;
+    private int first;
+    private int last;
+
+    public ForkJoinExample(int first, int last) {
+        this.first = first;
+        this.last = last;
+    }
+
+    @Override
+    protected Integer compute() {
+        int result = 0;
+        if (last - first <= threshold) {
+            // 任务足够小则直接计算
+            for (int i = first; i <= last; i++) {
+                result += i;
+            }
+        } else {
+            // 拆分成小任务
+            int middle = first + (last - first) / 2;
+            ForkJoinExample leftTask = new ForkJoinExample(first, middle);
+            ForkJoinExample rightTask = new ForkJoinExample(middle + 1, last);
+            leftTask.fork();
+            rightTask.fork();
+            result = leftTask.join() + rightTask.join();
+        }
+        return result;
+    }
+}
+public static void main(String[] args) throws ExecutionException, InterruptedException {
+    ForkJoinExample example = new ForkJoinExample(1, 10000);
+    ForkJoinPool forkJoinPool = new ForkJoinPool();
+    Future result = forkJoinPool.submit(example);
+    System.out.println(result.get());
+}
+```
+
+ForkJoin 使用 ForkJoinPool 来启动，它是一个特殊的线程池，线程数量取决于 CPU 核数。
+
+```java
+public class ForkJoinPool extends AbstractExecutorService
+```
+
+ForkJoinPool 实现了工作窃取算法来提高 CPU  的利用率。每个线程都维护了一个双端队列，用来存储需要执行的任务。工作窃取算法允许空闲的线程从其它线程的双端队列中窃取一个任务来执行。窃取的任务必须是最晚的任务，避免和队列所属线程发生竞争。例如下图中，Thread2 从 Thread1 的队列中拿出最晚的 Task1 任务，Thread1 会拿出 Task2  来执行，这样就避免发生竞争。但是如果队列中只有一个任务时还是会发生竞争。
+
+ [![img](https://camo.githubusercontent.com/b06eff6a60482e87b9ded90d6df90f9b47370f84/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f65343266313838662d663461392d346536662d383866632d3435663436383230373266622e706e67)](https://camo.githubusercontent.com/b06eff6a60482e87b9ded90d6df90f9b47370f84/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f65343266313838662d663461392d346536662d383866632d3435663436383230373266622e706e67) 
+
 ## 八、线程安全问题
 
+### 不安全
 
+如果多个线程对同一个共享数据进行访问而不采取同步操作的话，那么操作的结果是不一致的。
+
+以下代码演示了 1000 个线程同时对 cnt 执行自增操作，操作结束之后它的值有可能小于 1000。
+
+```java
+public class ThreadUnsafeExample {
+
+    private int cnt = 0;
+
+    public void add() {
+        cnt++;
+    }
+
+    public int get() {
+        return cnt;
+    }
+}
+public static void main(String[] args) throws InterruptedException {
+    final int threadSize = 1000;
+    ThreadUnsafeExample example = new ThreadUnsafeExample();
+    final CountDownLatch countDownLatch = new CountDownLatch(threadSize);
+    ExecutorService executorService = Executors.newCachedThreadPool();
+    for (int i = 0; i < threadSize; i++) {
+        executorService.execute(() -> {
+            example.add();
+            countDownLatch.countDown();
+        });
+    }
+    countDownLatch.await();
+    executorService.shutdown();
+    System.out.println(example.get());
+}
+//997
+```
+
+### 安全
+
+多个线程不管以何种方式访问某个类，并且在主调代码中不需要进行同步，都能表现正确的行为。
+
+线程安全有以下几种实现方式：
+
+#### 不可变
+
+不可变（Immutable）的对象一定是线程安全的，不需要再采取任何的线程安全保障措施。只要一个不可变的对象被正确地构建出来，永远也不会看到它在多个线程之中处于不一致的状态。多线程环境下，应当尽量使对象成为不可变，来满足线程安全。
+
+不可变的类型：
+
+- final 关键字修饰的基本数据类型
+- String
+- 枚举类型
+- Number 部分子类，如 Long 和 Double 等数值包装类型，BigInteger 和 BigDecimal 等大数据类型。但同为 Number 的原子类 AtomicInteger 和 AtomicLong 则是可变的。
+
+对于集合类型，可以使用 Collections.unmodifiableXXX() 方法来获取一个不可变的集合。
+
+```java
+public class ImmutableExample {
+    public static void main(String[] args) {
+        Map<String, Integer> map = new HashMap<>();
+        Map<String, Integer> unmodifiableMap = Collections.unmodifiableMap(map);
+        unmodifiableMap.put("a", 1);
+    }
+}
+//Exception in thread "main" java.lang.UnsupportedOperationException
+//    at java.util.Collections$UnmodifiableMap.put(Collections.java:1457)
+//    at ImmutableExample.main(ImmutableExample.java:9)
+```
+
+Collections.unmodifiableXXX() 先对原始的集合进行拷贝，需要对集合进行修改的方法都直接抛出异常。
+
+```java
+public V put(K key, V value) {
+    throw new UnsupportedOperationException();
+}
+```
+
+#### 互斥同步
+
+synchronized 和 ReentrantLock。
+
+#### 非阻塞同步
+
+互斥同步最主要的问题就是线程阻塞和唤醒所带来的性能问题，因此这种同步也称为阻塞同步。
+
+互斥同步属于一种悲观的并发策略，总是认为只要不去做正确的同步措施，那就肯定会出现问题。无论共享数据是否真的会出现竞争，它都要进行加锁（这里讨论的是概念模型，实际上虚拟机会优化掉很大一部分不必要的加锁）、用户态核心态转换、维护锁计数器和检查是否有被阻塞的线程需要唤醒等操作。
+
+随着硬件指令集的发展，我们可以使用基于冲突检测的乐观并发策略：先进行操作，如果没有其它线程争用共享数据，那操作就成功了，否则采取补偿措施（不断地重试，直到成功为止）。这种乐观的并发策略的许多实现都不需要将线程阻塞，因此这种同步操作称为非阻塞同步。
+
+##### 1. CAS
+
+乐观锁需要操作和冲突检测这两个步骤具备原子性，这里就不能再使用互斥同步来保证了，只能靠硬件来完成。硬件支持的原子性操作最典型的是：比较并交换（Compare-and-Swap，CAS）。CAS 指令需要有 3 个操作数，分别是内存地址 V、旧的预期值 A 和新值 B。当执行操作时，只有当 V 的值等于 A，才将 V 的值更新为 B。
+
+##### 2. AtomicInteger
+
+J.U.C 包里面的整数原子类 AtomicInteger 的方法调用了 Unsafe 类的 CAS 操作。
+
+以下代码使用了 AtomicInteger 执行了自增的操作。
+
+```
+private AtomicInteger cnt = new AtomicInteger();
+
+public void add() {
+    cnt.incrementAndGet();
+}
+```
+
+以下代码是 incrementAndGet() 的源码，它调用了 Unsafe 的 getAndAddInt() 。
+
+```
+public final int incrementAndGet() {
+    return unsafe.getAndAddInt(this, valueOffset, 1) + 1;
+}
+```
+
+以下代码是 getAndAddInt() 源码，var1 指示对象内存地址，var2 指示该字段相对对象内存地址的偏移，var4  指示操作需要加的数值，这里为 1。通过 getIntVolatile(var1, var2) 得到旧的预期值，通过调用  compareAndSwapInt() 来进行 CAS 比较，如果该字段内存地址中的值等于 var5，那么就更新内存地址为 var1+var2  的变量为 var5+var4。
+
+可以看到 getAndAddInt() 在一个循环中进行，发生冲突的做法是不断的进行重试。
+
+```
+public final int getAndAddInt(Object var1, long var2, int var4) {
+    int var5;
+    do {
+        var5 = this.getIntVolatile(var1, var2);
+    } while(!this.compareAndSwapInt(var1, var2, var5, var5 + var4));
+
+    return var5;
+}
+```
+
+##### 3. ABA
+
+如果一个变量初次读取的时候是 A 值，它的值被改成了 B，后来又被改回为 A，那 CAS 操作就会误认为它从来没有被改变过。
+
+J.U.C 包提供了一个带有标记的原子引用类 AtomicStampedReference  来解决这个问题，它可以通过控制变量值的版本来保证 CAS 的正确性。大部分情况下 ABA 问题不会影响程序并发的正确性，如果需要解决 ABA  问题，改用传统的互斥同步可能会比原子类更高效。
+
+#### 无同步方案
+
+要保证线程安全，并不是一定就要进行同步。如果一个方法本来就不涉及共享数据，那它自然就无须任何同步措施去保证正确性。
+
+##### 1. 栈封闭
+
+多个线程访问同一个方法的局部变量时，不会出现线程安全问题，因为局部变量存储在虚拟机栈中，属于线程私有的。
+
+```java
+public class StackClosedExample {
+    public void add100() {
+        int cnt = 0;
+        for (int i = 0; i < 100; i++) {
+            cnt++;
+        }
+        System.out.println(cnt);
+    }
+}
+public static void main(String[] args) {
+    StackClosedExample example = new StackClosedExample();
+    ExecutorService executorService = Executors.newCachedThreadPool();
+    executorService.execute(() -> example.add100());
+    executorService.execute(() -> example.add100());
+    executorService.shutdown();
+}
+//100
+//100
+```
+
+##### 2. 线程本地存储（Thread Local Storage）
+
+如果一段代码中所需要的数据必须与其他代码共享，那就看看这些共享数据的代码是否能保证在同一个线程中执行。如果能保证，我们就可以把共享数据的可见范围限制在同一个线程之内，这样，无须同步也能保证线程之间不出现数据争用的问题。
+
+符合这种特点的应用并不少见，大部分使用消费队列的架构模式（如“生产者-消费者”模式）都会将产品的消费过程尽量在一个线程中消费完。其中最重要的一个应用实例就是经典 Web 交互模型中的“一个请求对应一个服务器线程”（Thread-per-Request）的处理方式，这种处理方式的广泛应用使得很多 Web  服务端应用都可以使用线程本地存储来解决线程安全问题。
+
+可以使用 java.lang.ThreadLocal 类来实现线程本地存储功能。
+
+对于以下代码，thread1 中设置 threadLocal 为 1，而 thread2 设置 threadLocal 为 2。过了一段时间之后，thread1 读取 threadLocal 依然是 1，不受 thread2 的影响。
+
+```java
+public class ThreadLocalExample {
+    public static void main(String[] args) {
+        ThreadLocal threadLocal = new ThreadLocal();
+        Thread thread1 = new Thread(() -> {
+            threadLocal.set(1);
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println(threadLocal.get());
+            threadLocal.remove();
+        });
+        Thread thread2 = new Thread(() -> {
+            threadLocal.set(2);
+            threadLocal.remove();
+        });
+        thread1.start();
+        thread2.start();
+    }
+}
+//1
+```
+
+为了理解 ThreadLocal，先看以下代码：
+
+```
+public class ThreadLocalExample1 {
+    public static void main(String[] args) {
+        ThreadLocal threadLocal1 = new ThreadLocal();
+        ThreadLocal threadLocal2 = new ThreadLocal();
+        Thread thread1 = new Thread(() -> {
+            threadLocal1.set(1);
+            threadLocal2.set(1);
+        });
+        Thread thread2 = new Thread(() -> {
+            threadLocal1.set(2);
+            threadLocal2.set(2);
+        });
+        thread1.start();
+        thread2.start();
+    }
+}
+```
+
+它所对应的底层结构图为：
+
+ [![img](https://camo.githubusercontent.com/8968de525ae8f2712bd1c0c6a5f43a404dc2955c/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f36373832363734632d316266652d343837392d616633392d6539643732326139356433392e706e67)](https://camo.githubusercontent.com/8968de525ae8f2712bd1c0c6a5f43a404dc2955c/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f36373832363734632d316266652d343837392d616633392d6539643732326139356433392e706e67) 
+
+
+
+每个 Thread 都有一个 ThreadLocal.ThreadLocalMap 对象。
+
+```java
+/* ThreadLocal values pertaining to this thread. This map is maintained
+ * by the ThreadLocal class. */
+ThreadLocal.ThreadLocalMap threadLocals = null;
+```
+
+当调用一个 ThreadLocal 的 set(T value) 方法时，先得到当前线程的 ThreadLocalMap 对象，然后将 ThreadLocal->value 键值对插入到该 Map 中。
+
+```java
+public void set(T value) {
+    Thread t = Thread.currentThread();
+    ThreadLocalMap map = getMap(t);
+    if (map != null)
+        map.set(this, value);
+    else
+        createMap(t, value);
+}
+```
+
+get() 方法类似。
+
+```java
+public T get() {
+    Thread t = Thread.currentThread();
+    ThreadLocalMap map = getMap(t);
+    if (map != null) {
+        ThreadLocalMap.Entry e = map.getEntry(this);
+        if (e != null) {
+            @SuppressWarnings("unchecked")
+            T result = (T)e.value;
+            return result;
+        }
+    }
+    return setInitialValue();
+}
+```
+
+ThreadLocal 从理论上讲并不是用来解决多线程并发问题的，因为根本不存在多线程竞争。
+
+在一些场景 (尤其是使用线程池) 下，由于 ThreadLocal.ThreadLocalMap 的底层数据结构导致  ThreadLocal 有内存泄漏的情况，应该尽可能在每次使用 ThreadLocal 后手动调用 remove()，以避免出现  ThreadLocal 经典的内存泄漏甚至是造成自身业务混乱的风险。
+
+##### 3. 可重入代码（Reentrant Code）
+
+这种代码也叫做纯代码（Pure Code），可以在代码执行的任何时刻中断它，转而去执行另外一段代码（包括递归调用它本身），而在控制权返回后，原来的程序不会出现任何错误。
+
+可重入代码有一些共同的特征，例如不依赖存储在堆上的数据和公用的系统资源、用到的状态量都由参数中传入、不调用非可重入的方法等。
 
 ## 九、Java内存模型
 
