@@ -838,7 +838,7 @@ ava.util.concurrent（J.U.C）大大提高了并发性能，AQS 被认为是 J.U
 
 ### CountDownLatch
 
-用来控制一个或者多个线程等待多个线程。
+**用来控制一个或者多个线程等待多个线程。**
 
 维护了一个计数器 cnt，每次调用 countDown() 方法会让计数器的值减 1，减到 0 的时候，那些因为调用 await() 方法而在等待的线程就会被唤醒。
 
@@ -869,7 +869,7 @@ public class CountdownLatchExample {
 
 ### CyclicBarrier
 
-用来控制多个线程互相等待，只有当多个线程都到达时，这些线程才会继续执行。
+**用来控制多个线程互相等待，只有当多个线程都到达时，这些线程才会继续执行。**
 
 和 CountdownLatch 相似，都是通过维护计数器来实现的。线程执行 await() 方法之后计数器会减 1，并进行等待，直到计数器为 0，所有调用 await() 方法而在等待的线程才能继续执行。
 
@@ -920,7 +920,7 @@ public class CyclicBarrierExample {
 
 ### Semaphore
 
-Semaphore 类似于操作系统中的信号量，可以控制对互斥资源的访问线程数。
+**Semaphore 类似于操作系统中的信号量，可以控制对互斥资源的访问线程数。**
 
 以下代码模拟了对某个服务的并发请求，每次只能有 3 个客户端同时访问，请求总数为 10。
 
@@ -1417,7 +1417,7 @@ public static void main(String[] args) throws InterruptedException {
 - 枚举类型
 - Number 部分子类，如 Long 和 Double 等数值包装类型，BigInteger 和 BigDecimal 等大数据类型。但同为 Number 的原子类 AtomicInteger 和 AtomicLong 则是可变的。
 
-对于集合类型，可以使用 Collections.unmodifiableXXX() 方法来获取一个不可变的集合。
+对于集合类型，可以使用 Collections.unmodifiableXXX() 方法来获取一个不可变的集合。UnmodifiableMap<K,V>类是Collections类的内部静态私有类，实现Map和Serializable。
 
 ```java
 public class ImmutableExample {
@@ -1442,7 +1442,7 @@ public V put(K key, V value) {
 
 #### 互斥同步
 
-synchronized 和 ReentrantLock。
+synchronized 和 ReentrantLock。见第四章。
 
 #### 非阻塞同步
 
@@ -1450,11 +1450,60 @@ synchronized 和 ReentrantLock。
 
 互斥同步属于一种悲观的并发策略，总是认为只要不去做正确的同步措施，那就肯定会出现问题。无论共享数据是否真的会出现竞争，它都要进行加锁（这里讨论的是概念模型，实际上虚拟机会优化掉很大一部分不必要的加锁）、用户态核心态转换、维护锁计数器和检查是否有被阻塞的线程需要唤醒等操作。
 
-随着硬件指令集的发展，我们可以使用基于冲突检测的乐观并发策略：先进行操作，如果没有其它线程争用共享数据，那操作就成功了，否则采取补偿措施（不断地重试，直到成功为止）。这种乐观的并发策略的许多实现都不需要将线程阻塞，因此这种同步操作称为非阻塞同步。
+随着硬件指令集的发展，我们可以使用基于冲突检测的乐观并发策略：**先进行操作，如果没有其它线程争用共享数据，那操作就成功了，否则采取补偿措施（不断地重试，直到成功为止）。**这种乐观的并发策略的许多实现都不需要将线程阻塞，因此这种同步操作称为非阻塞同步。
 
 ##### 1. CAS
 
 乐观锁需要操作和冲突检测这两个步骤具备原子性，这里就不能再使用互斥同步来保证了，只能靠硬件来完成。硬件支持的原子性操作最典型的是：比较并交换（Compare-and-Swap，CAS）。CAS 指令需要有 3 个操作数，分别是内存地址 V、旧的预期值 A 和新值 B。当执行操作时，只有当 V 的值等于 A，才将 V 的值更新为 B。
+
+CAS的缺点是它使用调用者来处理竞争问题，通过重试、回退、放弃，而锁能自动处理竞争问题，例如阻塞。
+
+CAS（Compare and set）乐观的技术。Java实现的一个compare and set如下，这是一个模拟底层的示例：
+
+```java
+@ThreadSafe
+public class SimulatedCAS {
+    @GuardedBy("this") private int value;
+
+    public synchronized int get() {
+        return value;
+    }
+
+    public synchronized int compareAndSwap(int expectedValue,
+                                           int newValue) {
+        int oldValue = value;
+        if (oldValue == expectedValue)
+            value = newValue;
+        return oldValue;
+    }
+
+    public synchronized boolean compareAndSet(int expectedValue,
+                                              int newValue) {
+        return (expectedValue
+                == compareAndSwap(expectedValue, newValue));
+    }
+}
+```
+
+非阻塞的计数器：
+
+```java
+public class CasCounter {
+    private SimulatedCAS value;
+
+    public int getValue() {
+        return value.get();
+    }
+
+    public int increment() {
+        int v;
+        do {
+            v = value.get();
+        } while (v != value.compareAndSwap(v, v + 1));
+        return v + 1;
+    }
+}
+```
 
 ##### 2. AtomicInteger
 
@@ -1462,7 +1511,7 @@ J.U.C 包里面的整数原子类 AtomicInteger 的方法调用了 Unsafe 类的
 
 以下代码使用了 AtomicInteger 执行了自增的操作。
 
-```
+```java
 private AtomicInteger cnt = new AtomicInteger();
 
 public void add() {
@@ -1472,7 +1521,7 @@ public void add() {
 
 以下代码是 incrementAndGet() 的源码，它调用了 Unsafe 的 getAndAddInt() 。
 
-```
+```java
 public final int incrementAndGet() {
     return unsafe.getAndAddInt(this, valueOffset, 1) + 1;
 }
@@ -1482,22 +1531,50 @@ public final int incrementAndGet() {
 
 可以看到 getAndAddInt() 在一个循环中进行，发生冲突的做法是不断的进行重试。
 
-```
+```java
 public final int getAndAddInt(Object var1, long var2, int var4) {
     int var5;
     do {
         var5 = this.getIntVolatile(var1, var2);
     } while(!this.compareAndSwapInt(var1, var2, var5, var5 + var4));
 
-    return var5;
+    return var5;//在内存地址中的旧值
 }
 ```
+
+Unsafe是经过特殊处理的，不能理解成常规的java代码，区别在于：
+
+- 1.8在调用getAndAddInt的时候，如果系统底层支持fetch-and-add，那么它执行的就是native方法，使用的是fetch-and-add；
+- 如果不支持，就按照上面的所看到的getAndAddInt方法体那样，以java代码的方式去执行，使用的是compare-and-swap；
+
+这也正好跟openjdk8中Unsafe::getAndAddInt上方的注释相吻合：
+
+```javascript
+// The following contain CAS-based Java implementations used on
+// platforms not supporting native instructions
+```
+
+**AtomicInteger如何保证线程安全？**
+
+在AtomicInteger中的incrementAndGet（）方法中，调用了Unsafe类中的getAndAddInt（）方法，该方法中的CAS操作保证了AtomicInteger的线程安全。即保证线程安全是在硬件层面上的CAS操作。
 
 ##### 3. ABA
 
 如果一个变量初次读取的时候是 A 值，它的值被改成了 B，后来又被改回为 A，那 CAS 操作就会误认为它从来没有被改变过。
 
-J.U.C 包提供了一个带有标记的原子引用类 AtomicStampedReference  来解决这个问题，它可以通过控制变量值的版本来保证 CAS 的正确性。大部分情况下 ABA 问题不会影响程序并发的正确性，如果需要解决 ABA  问题，改用传统的互斥同步可能会比原子类更高效。
+J.U.C 包提供了一个带有标记的原子引用类 AtomicStampedReference  来解决这个问题，它可以通过控制变量值的版本来保证 CAS 的正确性。**大部分情况下 ABA 问题不会影响程序并发的正确性，如果需要解决 ABA  问题，改用传统的互斥同步可能会比原子类更高效。**
+
+##### 知识扩展
+
+**锁的劣势：**
+
+独占，可见性是锁要保证的。
+
+许多JVM都对非竞争的锁获取和释放做了很多优化，性能很不错了。但是如果一些线程被挂起然后稍后恢复运行，当线程恢复后还得等待其他线程执行完他们的时间片，才能被调度，所以挂起和恢复线程存在很大的开销，其实很多锁的力度很小的，很简单，如果锁上存在着激烈的竞争，那么多调度开销/工作开销比值就会非常高。
+
+与锁相比，volatile是一种更轻量级的同步机制，因为使用volatile不会发生上下文切换或者线程调度操作，但是volatile的指明问题就是虽然保证了可见性，但是原子性无法保证，比如i++的字节码就是N行。
+
+锁的其他缺点还包括，如果一个线程正在等待锁，它不能做任何事情，如果一个线程在持有锁的情况下呗延迟执行了，例如发生了缺页错误，调度延迟，那么就没法执行。如果被阻塞的线程优先级较高，那么就会出现priority invesion的问题，被永久的阻塞下去。
 
 #### 无同步方案
 
@@ -1516,13 +1593,13 @@ public class StackClosedExample {
         }
         System.out.println(cnt);
     }
-}
-public static void main(String[] args) {
-    StackClosedExample example = new StackClosedExample();
-    ExecutorService executorService = Executors.newCachedThreadPool();
-    executorService.execute(() -> example.add100());
-    executorService.execute(() -> example.add100());
-    executorService.shutdown();
+    public static void main(String[] args) {
+    	StackClosedExample example = new StackClosedExample();
+    	ExecutorService executorService = Executors.newCachedThreadPool();
+    	executorService.execute(() -> example.add100());
+    	executorService.execute(() -> example.add100());
+    	executorService.shutdown();
+	}
 }
 //100
 //100
@@ -1641,13 +1718,445 @@ ThreadLocal 从理论上讲并不是用来解决多线程并发问题的，因�
 
 ## 九、Java内存模型
 
+Java 内存模型试图屏蔽各种硬件和操作系统的内存访问差异，以实现让 Java 程序在各种平台下都能达到一致的内存访问效果。
 
+java内存模型(Java Memory Model，JMM)是java虚拟机规范定义的，用来屏蔽掉java程序在各种不同的硬件和操作系统对内存的访问的差异，这样就可以实现java程序在各种不同的平台上都能达到内存访问的一致性。可以避免像c++等直接使用物理硬件和操作系统的内存模型在不同操作系统和硬件平台下表现不同，比如有些c/c++程序可能在windows平台运行正常，而在linux平台却运行有问题。
+
+### 主内存与工作内存
+
+处理器上寄存器的读写速度比内存快几个数量级，为了解决这种速度矛盾，在它们之间加入了高速缓存。
+
+加入高速缓存带来了一个新的问题：缓存一致性。如果多个缓存共享同一块主内存区域，那么多个缓存的数据可能会不一致，需要一些协议来解决这个问题。
+
+ [![img](https://camo.githubusercontent.com/7e289aaee2d8533d8870f92659a8984be81eb432/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f39343263613064322d396435632d343561342d383963622d3566643839623631393133662e706e67)](https://camo.githubusercontent.com/7e289aaee2d8533d8870f92659a8984be81eb432/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f39343263613064322d396435632d343561342d383963622d3566643839623631393133662e706e67) 
+
+
+
+所有的变量都存储在主内存中，每个线程还有自己的工作内存，工作内存存储在高速缓存或者寄存器中，保存了该线程使用的变量的主内存副本拷贝。
+
+线程只能直接操作工作内存中的变量，不同线程之间的变量值传递需要通过主内存来完成。
+
+ [![img](https://camo.githubusercontent.com/fce232dcfc7411192b429ae86765aa9bef029427/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f31353835313535352d356162632d343937642d616433342d6566656431306634336136622e706e67)](https://camo.githubusercontent.com/fce232dcfc7411192b429ae86765aa9bef029427/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f31353835313535352d356162632d343937642d616433342d6566656431306634336136622e706e67) 
+
+虽然java程序所有的运行都是在虚拟机中，涉及到的内存等信息都是虚拟机的一部分，但实际也是物理机的，只不过是虚拟机作为最外层的容器统一做了处理。虚拟机的内存模型，以及多线程的场景下与物理机的情况是很相似的，可以类比参考。
+ **Java内存模型的主要目标是定义程序中变量的访问规则。即在虚拟机中将变量存储到主内存或者将变量从主内存取出这样的底层细节。需要注意的是这里的变量跟我们写java程序中的变量不是完全等同的。**这里的变量是指实例字段，静态字段，构成数组对象的元素，但是不包括局部变量和方法参数(因为这是线程私有的)。这里可以简单的认为主内存是java虚拟机内存区域中的堆，局部变量和方法参数是在虚拟机栈中定义的。但是在堆中的变量如果在多线程中都使用，就涉及到了堆和不同虚拟机栈中变量的值的一致性问题了。
+
+Java内存模型中涉及到的概念有：
+
+- 主内存：**java虚拟机规定所有的变量(不是程序中的变量)都必须在主内存中产生**，为了方便理解，可以认为是堆区。可以与前面说的物理机的主内存相比，只不过物理机的主内存是整个机器的内存，而虚拟机的主内存是虚拟机内存中的一部分。
+- 工作内存：java虚拟机中每个线程都有自己的工作内存，该内存是线程私有的为了方便理解，可以认为是虚拟机栈。可以与前面说的高速缓存相比。**线程的工作内存保存了线程需要的变量在主内存中的副本。虚拟机规定，线程对主内存变量的修改必须在线程的工作内存中进行，不能直接读写主内存中的变量。**不同的线程之间也不能相互访问对方的工作内存。如果线程之间需要传递变量的值，必须通过主内存来作为中介进行传递。
+   **这里需要说明一下：主内存、工作内存与java内存区域中的java堆、虚拟机栈、方法区并不是一个层次的内存划分。这两者是基本上是没有关系的，上文只是为了便于理解，做的类比**
+
+### 内存间交互操作
+
+Java 内存模型定义了 8 个操作来完成主内存和工作内存的交互操作。java虚拟机中主内存和工作内存交互，就是一个变量如何从主内存传输到工作内存中，如何把修改后的变量从工作内存同步回主内存。
+
+ [![img](https://camo.githubusercontent.com/42696b8f0b2cfbf78024f9cd0d806e0e6decb5fe/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f38623765626261642d393630342d343337352d383465332d6634313230393964313730632e706e67)](https://camo.githubusercontent.com/42696b8f0b2cfbf78024f9cd0d806e0e6decb5fe/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f38623765626261642d393630342d343337352d383465332d6634313230393964313730632e706e67) 
+
+
+
+- read：作用于主内存变量，表示把一个主内存变量的值传输到线程的工作内存，以便随后的load操作使用。
+- load：作用于线程的工作内存的变量，表示把read操作从主内存中读取的变量的值放到工作内存的变量副本中(副本是相对于主内存的变量而言的)。
+- use：作用于线程的工作内存中的变量，表示把工作内存中的一个变量的值传递给执行引擎，**每当虚拟机遇到一个需要使用变量的值的字节码指令时就会执行该操作。**
+- assign：作用于线程的工作内存的变量，表示把执行引擎返回的结果赋值给工作内存中的变量，**每当虚拟机遇到一个给变量赋值的字节码指令时就会执行该操作。**
+- store：作用于线程的工作内存中的变量，把工作内存中的一个变量的值传递给主内存，以便随后的write操作使用。
+- write：作用于主内存的变量，把store操作从工作内存中得到的变量的值放入主内存的变量中。
+- lock：作用于主内存的变量，一个变量在同一时间只能一个线程锁定，该操作表示这条线成独占这个变量。
+- unlock：作用于主内存的变量，表示这个变量的状态由处于锁定状态被释放，这样其他线程才能对该变量进行锁定。
+
+如果要把一个变量从主内存传输到工作内存，那就要顺序的执行read和load操作，如果要把一个变量从工作内存回写到主内存，就要顺序的执行store和write操作。对于普通变量，虚拟机只是要求顺序的执行，并没有要求连续的执行，所以如下也是正确的。对于两个线程，分别从主内存中读取变量a和b的值，并不一样要read a; load a; read b; load b; 也会出现如下执行顺序：read a; read b; load b; load a; (对于volatile修饰的变量会有一些其他规则,后边会详细列出)，对于这8中操作，虚拟机也规定了一系列规则，在执行这8种操作的时候必须遵循如下的规则：
+
+- **不允许read和load、store和write操作之一单独出现**，也就是不允许从主内存读取了变量的值但是工作内存不接收的情况，或者不允许从工作内存将变量的值回写到主内存但是主内存不接收的情况。
+- **不允许一个线程丢弃最近的assign操作**，也就是不允许线程在自己的工作线程中修改了变量的值却不同步/回写到主内存。
+- **不允许一个线程回写没有修改的变量到主内存**，也就是如果线程工作内存中变量没有发生过任何assign操作，是不允许将该变量的值回写到主内存。
+- **变量只能在主内存中产生**，不允许在工作内存中直接使用一个未被初始化的变量，也就是没有执行load（从主内存获取值）或者assign（从执行引擎获取值）操作。也就是说在执行use、store之前必须对相同的变量执行了load、assign操作。
+- **一个变量在同一时刻只能被一个线程对其进行lock操作**，也就是说一个线程一旦对一个变量加锁后，在该线程没有释放掉锁之前，其他线程是不能对其加锁的，**但是同一个线程对一个变量加锁后，可以继续加锁，同时在释放锁的时候释，放锁次数必须和加锁次数相同。**
+- **对变量执行lock操作，就会清空工作内存该变量的值**，执行引擎使用这个变量之前，需要重新load或者assign操作初始化变量的值。
+- **不允许对没有lock的变量执行unlock操作**，如果一个变量没有被lock操作，那也不能对其执行unlock操作，当然一个线程也不能对被其他线程lock的变量执行unlock操作。
+- **对一个变量执行unlock之前，必须先把变量同步回主内存中**，也就是执行store和write操作。
+
+当然，最重要的还是如开始所说，这8个动作必须是原子的，不可分割的。
+ 针对volatile修饰的变量，会有一些特殊规定。
+
+### volatile修饰的变量的特殊规则
+
+关键字volatile可以说是java虚拟机中提供的最轻量级的同步机制。java内存模型对volatile专门定义了一些特殊的访问规则。这些规则有些晦涩拗口，先列出规则，然后用更加通俗易懂的语言来解释：
+ 假定T表示一个线程，V和W分别表示两个volatile修饰的变量，那么在进行read、load、use、assign、store和write操作的时候需要满足如下规则：
+
+- **只有当线程T对变量V执行的前一个动作是load，线程T对变量V才能执行use动作；同时只有当线程T对变量V执行的后一个动作是use的时候线程T对变量V才能执行load操作。**所以，线程T对变量V的use动作和线程T对变量V的read、load动作相关联，必须是连续一起出现。也就是在线程T的工作内存中，每次使用变量V之前必须从主内存去重新获取最新的值，用于保证线程T能看得见其他线程对变量V的最新的修改后的值。
+- **只有当线程T对变量V执行的前一个动作是assign的时候，线程T对变量V才能执行store动作；同时只有当线程T对变量V执行的后一个动作是store的时候，线程T对变量V才能执行assign动作。**所以，线程T对变量V的assign操作和线程T对变量V的store、write动作相关联，必须一起连续出现。也即是在线程T的工作内存中，每次修改变量V之后必须立刻同步回主内存，用于保证线程T对变量V的修改能立刻被其他线程看到。
+- **假定动作A是线程T对变量V实施的use或assign动作，动作F是和动作A相关联的load或store动作，动作P是和动作F相对应的对变量V的read或write动作；类似的，假定动作B是线程T对变量W实施的use或assign动作，动作G是和动作B相关联的load或store动作，动作Q是和动作G相对应的对变量W的read或write动作。如果动作A先于B，那么P先于Q。**也就是说在同一个线程内部，被volatile修饰的变量不会被指令重排序，保证代码的执行顺序和程序的顺序相同。
+
+总结上面三条规则，前面两条可以概括为：**volatile类型的变量保证对所有线程的可见性**。第三条为：**volatile类型的变量禁止指令重排序优化**。
+
+- **valatile类型的变量保证对所有线程的可见性**
+   可见性是指当一个线程修改了这个变量的值，新值（修改后的值）对于其他线程来说是立即可以得知的。正如上面的前两条规则规定，volatile类型的变量每次值被修改了就立即同步回主内存，每次使用时就需要从主内存重新读取值。返回到前面对普通变量的规则中，并没有要求这一点，所以普通变量的值是不会立即对所有线程可见的。
+   误解：volatile变量对所有线程是立即可见的，所以对volatile变量的所有修改(写操作)都立刻能反应到其他线程中。或者换句话说：volatile变量在各个线程中是一致的，所以基于volatile变量的运算在并发下是线程安全的。
+   这个观点的论据是正确的，但是根据论据得出的结论是错误的，并不能得出这样的结论。volatile的规则，保证了read、load、use的顺序和连续行，同理assign、store、write也是顺序和连续的。也就是这几个动作是原子性的，但是对变量的修改，或者对变量的运算，却不能保证是原子性的（如k++，需要先获取k的值，再进行运算，这两个步骤不能保证原子性）。如果对变量的修改是分为多个步骤的，那么多个线程同时从主内存拿到的值是最新的，但是经过多步运算后回写到主内存的值是有可能存在覆盖情况发生的。如下代码的例子：
+
+```java
+public class VolatileTest {
+  public static volatile int race = 0;
+  public static void increase() {
+    race++
+  }
+
+  private static final int THREADS_COUNT = 20;
+
+  public void static main(String[] args) {
+      Thread[] threads = new Thread[THREADS_COUNT);
+      for (int = 0; i < THREADS_COUNT; i++) {
+          threads[i] = new Thread(new Runnable(){
+              @Override
+              public void run() {
+                  for (int j = 0; j < 10000; j++) {
+                     increase();
+                  }
+              }
+          });
+          threads[i].start();
+      }
+      while (Thread.activeCount() > 1) {
+         Thread.yield();
+      }
+      System.out.println(race);
+  }
+}
+//结果可能小于20W
+```
+
+代码就是对volatile类型的变量启动了20个线程，每个线程对变量执行1w次加1操作，如果volatile变量并发操作没有问题的话，那么结果应该是输出20w，但是结果运行的时候每次都是小于20w，这就是因为`race++`操作不是原子性的，是分多个步骤完成的。假设两个线程a、b同时取到了主内存的值，是0，这是没有问题的，在进行`++`操作的时候假设线程a执行到一半，线程b执行完了，这时线程b立即同步给了主内存，主内存的值为1，而线程a此时也执行完了，同步给了主内存，此时的值仍然是1，线程b的结果被覆盖掉了。
+
+volatile不能保证线程安全而synchronized可以保证线程安全。volatile只能保证被其修饰变量的内存可见性,但如果对该变量执行的是非原子操作，线程依旧是不安全的
+
+- **volatile变量禁止指令重排序优化**
+   普通的变量仅仅会保证在该方法执行的过程中，所有依赖赋值结果的地方都能获取到正确的结果，但不能保证变量赋值的操作顺序和程序代码的顺序一致。因为在一个线程的方法执行过程中无法感知到这一点，这也就是java内存模型中描述的所谓的“线程内部表现为串行的语义”。
+   也就是在单线程内部，我们看到的或者感知到的结果和代码顺序是一致的，即使代码的执行顺序和代码顺序不一致，但是在需要赋值的时候结果也是正确的，所以看起来就是串行的。但实际结果有可能代码的执行顺序和代码顺序是不一致的。这在多线程中就会出现问题。
+   看下面的伪代码举例：
+
+```java
+Map configOptions;
+char[] configText;
+//volatile类型bianliang
+volatile boolean initialized = false;
+
+//假设以下代码在线程A中执行
+//模拟读取配置信息，读取完成后认为是初始化完成
+configOptions = new HashMap();
+configText = readConfigFile(fileName);
+processConfigOptions(configText, configOptions);
+initialized = true;
+
+//假设以下代码在线程B中执行
+//等待initialized为true后，读取配置信息进行操作
+while ( !initialized) {
+  sleep();
+}
+doSomethingWithConfig();
+
+```
+
+如果initialiezd是普通变量，没有被volatile修饰，那么线程A执行的代码的修改初始化完成的结果`initialized = true`就有可能先于之前的三行代码执行，而此时线程B发现initialized为true了，就执行`doSomethingWithConfig()`方法，但是里面的配置信息都是null的，就会出现问题了。
+ 现在initialized是volatile类型变量，保证禁止代码重排序优化，那么就可以保证`initialized = true`执行的时候，前边的三行代码一定执行完成了，那么线程B读取的配置文件信息就是正确的。
+
+跟其他保证并发安全的工具相比，volatile的性能确实会好一些。在某些情况下，volatile的同步机制性能要优于锁(使用synchronized关键字或者java.util.concurrent包中的锁)。但是现在由于虚拟机对锁的不断优化和实行的许多消除动作，很难有一个量化的比较。
+ 与自己相比，就可以确定一个原则：volatile变量的读操作和普通变量的读操作几乎没有差异，但是写操作会性能差一些，慢一些，因为要在本地代码中插入许多内存屏障指令来禁止指令重排序，保证处理器不发生代码乱序执行行为。
+
+### long和double变量的特殊规则
+
+Java内存模型要求对主内存和工作内存交换的八个动作是原子的，正如章节开头所讲，对long和double有一些特殊规则。八个动作中lock、unlock、read、load、use、assign、store、write对待32位的基本数据类型都是原子操作，对待long和double这两个64位的数据，java虚拟机规范对java内存模型的规定中特别定义了一条相对宽松的规则：**允许虚拟机将没有被volatile修饰的64位数据的读写操作划分为两次32位的操作来进行，也就是允许虚拟机不保证对64位数据的read、load、store和write这4个动作的操作是原子的。**这也就是我们常说的long和double的非原子性协定(Nonautomic Treatment of double and long Variables)。
+
+### 内存模型三大特性
+
+#### 1. 原子性
+
+Java 内存模型保证了 read、load、use、assign、store、write、lock 和 unlock  操作具有原子性，例如对一个 int 类型的变量执行 assign 赋值操作，这个操作就是原子性的。但是 Java 内存模型允许虚拟机将没有被  volatile 修饰的 64 位数据（long，double）的读写操作划分为两次 32 位的操作来进行，即 load、store、read 和 write 操作可以不具备原子性。目前虚拟机基本都对其实现了原子性。如果需要更大范围的控制，lock和unlock也可以满足需求。lock和unlock虽然没有被虚拟机直接开给用户使用，但是提供了字节码层次的指令monitorenter和monitorexit对应这两个操作，对应到java代码就是synchronized关键字，因此在synchronized块之间的代码都具有原子性。
+
+有一个错误认识就是，int 等原子性的类型在多线程环境中不会出现线程安全问题。前面的线程不安全示例代码中，cnt 属于 int 类型变量，1000 个线程对它进行自增操作之后，得到的值为 997 而不是 1000。
+
+为了方便讨论，将内存间的交互操作简化为 3 个：load、assign、store。
+
+下图演示了两个线程同时对 cnt 进行操作，load、assign、store 这一系列操作整体上看不具备原子性，那么在 T1 修改  cnt 并且还没有将修改后的值写入主内存，T2 依然可以读入旧值。可以看出，这两个线程虽然执行了两次自增运算，但是主内存中 cnt 的值最后为 1 而不是 2。因此对 int 类型读写操作满足原子性只是说明 load、assign、store 这些单个操作具备原子性。
+
+ [![img](https://camo.githubusercontent.com/430b45d369c24a65e4a4641f52b14aaa95d41c7c/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f32373937613630392d363864622d346437622d383730312d3431616339613334623134662e6a7067)](https://camo.githubusercontent.com/430b45d369c24a65e4a4641f52b14aaa95d41c7c/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f32373937613630392d363864622d346437622d383730312d3431616339613334623134662e6a7067) 
+
+
+
+AtomicInteger 能保证多个线程修改的原子性。
+
+ [![img](https://camo.githubusercontent.com/b77a1a0dc9c2a35d056d0c76b75df18226283040/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f64643536333033372d666361612d346264382d383362362d6233396439336131326337372e6a7067)](https://camo.githubusercontent.com/b77a1a0dc9c2a35d056d0c76b75df18226283040/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f64643536333033372d666361612d346264382d383362362d6233396439336131326337372e6a7067) 
+
+
+
+使用 AtomicInteger 重写之前线程不安全的代码之后得到以下线程安全实现：
+
+```java
+public class AtomicExample {
+    private AtomicInteger cnt = new AtomicInteger();
+
+    public void add() {
+        cnt.incrementAndGet();
+    }
+
+    public int get() {
+        return cnt.get();
+    }
+}
+public static void main(String[] args) throws InterruptedException {
+    final int threadSize = 1000;
+    AtomicExample example = new AtomicExample(); // 只修改这条语句
+    final CountDownLatch countDownLatch = new CountDownLatch(threadSize);
+    ExecutorService executorService = Executors.newCachedThreadPool();
+    for (int i = 0; i < threadSize; i++) {
+        executorService.execute(() -> {
+            example.add();
+            countDownLatch.countDown();
+        });
+    }
+    countDownLatch.await();
+    executorService.shutdown();
+    System.out.println(example.get());
+}
+//1000
+```
+
+除了使用原子类之外，也可以使用 synchronized 互斥锁来保证操作的原子性。它对应的内存间交互操作为：lock 和 unlock，在虚拟机实现上对应的字节码指令为 monitorenter 和 monitorexit。
+
+```java
+public class AtomicSynchronizedExample {
+    private int cnt = 0;
+
+    public synchronized void add() {
+        cnt++;
+    }
+
+    public synchronized int get() {
+        return cnt;
+    }
+}
+public static void main(String[] args) throws InterruptedException {
+    final int threadSize = 1000;
+    AtomicSynchronizedExample example = new AtomicSynchronizedExample();
+    final CountDownLatch countDownLatch = new CountDownLatch(threadSize);
+    ExecutorService executorService = Executors.newCachedThreadPool();
+    for (int i = 0; i < threadSize; i++) {
+        executorService.execute(() -> {
+            example.add();
+            countDownLatch.countDown();
+        });
+    }
+    countDownLatch.await();
+    executorService.shutdown();
+    System.out.println(example.get());
+}
+//1000
+```
+
+#### 2. 可见性
+
+可见性指当一个线程修改了共享变量的值，其它线程能够立即得知这个修改。Java 内存模型是通过在变量修改后将新值同步回主内存，在变量读取前从主内存刷新变量值来实现可见性的。
+
+主要有三种实现可见性的方式：
+
+- volatile
+- synchronized，对一个变量执行 unlock 操作之前，必须把变量值同步回主内存。
+- final，被 final 关键字修饰的字段在构造器中一旦初始化完成，并且没有发生 this 逃逸（其它线程通过 this 引用访问到初始化了一半的对象），那么其它线程就能看见 final 字段的值。
+
+对前面的线程不安全示例中的 cnt 变量使用 volatile 修饰，不能解决线程不安全问题，因为 volatile 并不能保证操作的原子性。
+
+#### 3. 有序性
+
+有序性是指：在本线程内观察，所有操作都是有序的。在一个线程观察另一个线程，所有操作都是无序的，无序是因为发生了指令重排序。在 Java 内存模型中，允许编译器和处理器对指令进行重排序，重排序过程不会影响到单线程程序的执行，却会影响到多线程并发执行的正确性。
+
+volatile 关键字通过添加内存屏障的方式来禁止指令重排，即重排序时不能把后面的指令放到内存屏障之前。
+
+也可以通过 synchronized 来保证有序性，它保证每个时刻只有一个线程执行同步代码，相当于是让线程顺序执行同步代码。
+
+### 先行发生原则
+
+上面提到了可以用 volatile 和 synchronized 来保证有序性。除此之外，JVM 还规定了先行发生原则，让一个操作无需控制就能先于另一个操作完成，是判断数据是否存在竞争、线程是否安全的主要依据。
+
+#### 1. 单一线程原则
+
+> Single Thread rule
+
+在一个线程内，在程序前面的操作先行发生于后面的操作。
+
+ [![img](https://camo.githubusercontent.com/e1c3998ce9151df8d6b226e640270efff94df669/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f38373462336666372d376335632d346537612d623861622d6138326133653033386432302e706e67)](https://camo.githubusercontent.com/e1c3998ce9151df8d6b226e640270efff94df669/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f38373462336666372d376335632d346537612d623861622d6138326133653033386432302e706e67) 
+
+
+
+#### 2. 管程锁定规则
+
+> Monitor Lock Rule
+
+一个 unlock 操作先行发生于后面对同一个锁的 lock 操作。
+
+ [![img](https://camo.githubusercontent.com/c86b5efc7f2ba505380081f0a343e72a862394f0/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f38393936613533372d376334612d346563382d613362372d3765663137393865616532362e706e67)](https://camo.githubusercontent.com/c86b5efc7f2ba505380081f0a343e72a862394f0/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f38393936613533372d376334612d346563382d613362372d3765663137393865616532362e706e67) 
+
+#### 3. volatile 变量规则
+
+> Volatile Variable Rule
+
+对一个 volatile 变量的写操作先行发生于**后面**对这个变量的读操作，这里的后面是指时间上的先后顺序。
+
+ [![img](https://camo.githubusercontent.com/4cba332d162065020d289fbb116e50465ceb0e15/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f39343266333363392d386164392d343938372d383336662d3030376465346332316465302e706e67)](https://camo.githubusercontent.com/4cba332d162065020d289fbb116e50465ceb0e15/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f39343266333363392d386164392d343938372d383336662d3030376465346332316465302e706e67) 
+
+#### 4. 线程启动规则
+
+> Thread Start Rule
+
+Thread 对象的 start() 方法调用先行发生于此线程的**每一个动作**。
+
+ [![img](https://camo.githubusercontent.com/6a64fb5055e471c6de4363bee031982bb42200d9/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f36323730633231362d376563302d346462372d393464652d3030303362636533376364322e706e67)](https://camo.githubusercontent.com/6a64fb5055e471c6de4363bee031982bb42200d9/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f36323730633231362d376563302d346462372d393464652d3030303362636533376364322e706e67) 
+
+#### 5. 线程加入规则
+
+> Thread Join Rule
+
+Thread 对象的结束先行发生于 join() 方法返回。
+
+ [![img](https://camo.githubusercontent.com/17e6baed6955e119c1e512d6ceef339002b343e1/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f32333366386438392d333164372d343133662d396330322d3034326631396334366261312e706e67)](https://camo.githubusercontent.com/17e6baed6955e119c1e512d6ceef339002b343e1/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f32333366386438392d333164372d343133662d396330322d3034326631396334366261312e706e67) 
+
+#### 6. 线程中断规则
+
+> Thread Interruption Rule
+
+对线程 interrupt() 方法的调用先行发生于被中断线程的代码检测到中断事件的发生（catch？？？），可以通过 interrupted() 方法检测到是否有中断发生。
+
+#### 7. 对象终结规则
+
+> Finalizer Rule
+
+一个对象的初始化完成（构造函数执行结束）先行发生于它的 finalize() 方法的开始。
+
+#### 8. 传递性
+
+> Transitivity
+
+如果操作 A 先行发生于操作 B，操作 B 先行发生于操作 C，那么操作 A 先行发生于操作 C。
 
 ## 十、锁机制及锁优化
 
+这里的锁优化主要是指 JVM 对 synchronized 的优化。
+
+### 自旋锁
+
+互斥同步进入阻塞状态的开销都很大，应该尽量避免。在许多应用中，共享数据的锁定状态只会持续很短的一段时间。自旋锁的思想是让一个线程在请求一个共享数据的锁时执行忙循环（自旋）一段时间，如果在这段时间内能获得锁，就可以避免进入阻塞状态。
+
+自旋锁虽然能避免进入阻塞状态从而减少开销，但是它需要进行忙循环操作占用 CPU 时间，它只适用于共享数据的锁定状态很短的场景。
+
+在 JDK 1.6 中引入了自适应的自旋锁。自适应意味着自旋的次数不再固定了，而是由前一次在同一个锁上的自旋次数及锁的拥有者的状态来决定。
+
+### 锁消除
+
+锁消除是指对于被检测出不可能存在竞争的共享数据的锁进行消除。
+
+锁消除主要是通过逃逸分析来支持，如果堆上的共享数据不可能逃逸出去被其它线程访问到，那么就可以把它们当成私有数据对待，也就可以将它们的锁进行消除。
+
+对于一些看起来没有加锁的代码，其实隐式的加了很多锁。例如下面的字符串拼接代码就隐式加了锁：
+
+```
+public static String concatString(String s1, String s2, String s3) {
+    return s1 + s2 + s3;
+}
+```
+
+String 是一个不可变的类，编译器会对 String 的拼接自动优化。在 JDK 1.5 之前，会转化为 StringBuffer 对象的连续 append() 操作：
+
+```
+public static String concatString(String s1, String s2, String s3) {
+    StringBuffer sb = new StringBuffer();
+    sb.append(s1);
+    sb.append(s2);
+    sb.append(s3);
+    return sb.toString();
+}
+```
+
+每个 append() 方法中都有一个同步块。虚拟机观察变量 sb，很快就会发现它的动态作用域被限制在 concatString()  方法内部。也就是说，sb 的所有引用永远不会逃逸到 concatString() 方法之外，其他线程无法访问到它，因此可以进行消除。
+
+### 锁粗化
+
+如果一系列的连续操作都对同一个对象反复加锁和解锁，频繁的加锁操作就会导致性能损耗。
+
+上一节的示例代码中连续的 append()  方法就属于这类情况。如果虚拟机探测到由这样的一串零碎的操作都对同一个对象加锁，将会把加锁的范围扩展（粗化）到整个操作序列的外部。对于上一节的示例代码就是扩展到第一个 append() 操作之前直至最后一个 append() 操作之后，这样只需要加锁一次就可以了。
+
+### 轻量级锁
+
+JDK 1.6 引入了偏向锁和轻量级锁，从而让锁拥有了四个状态：无锁状态（unlocked）、偏向锁状态（biasble）、轻量级锁状态（lightweight locked）和重量级锁状态（inflated）。
+
+以下是 HotSpot 虚拟机对象头的内存布局，这些数据被称为 Mark Word。其中 tag bits 对应了五个状态，这些状态在右侧的 state 表格中给出。除了 marked for gc 状态，其它四个状态已经在前面介绍过了。
+
+ [![img](https://camo.githubusercontent.com/deab9b2c52091554cc095249fd7a97fc1ca41521/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f62623661343962652d303066322d346632372d613063652d3465643736346263363035632e706e67)](https://camo.githubusercontent.com/deab9b2c52091554cc095249fd7a97fc1ca41521/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f62623661343962652d303066322d346632372d613063652d3465643736346263363035632e706e67) 
 
 
-## 十一、多线程开发的良好习惯
+
+下图左侧是一个线程的虚拟机栈，其中有一部分称为 Lock Record 的区域，这是在轻量级锁运行过程创建的，用于存放锁对象的 Mark Word。而右侧就是一个锁对象，包含了 Mark Word 和其它信息。
+
+ [![img](https://camo.githubusercontent.com/c1a0307ca4be2bc4b5a3492c634553b4255759bd/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f30353165343336632d306534362d346335392d386636372d3532643839643635363138322e706e67)](https://camo.githubusercontent.com/c1a0307ca4be2bc4b5a3492c634553b4255759bd/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f30353165343336632d306534362d346335392d386636372d3532643839643635363138322e706e67) 
+
+
+
+轻量级锁是相对于传统的重量级锁而言，它使用 CAS 操作来避免重量级锁使用互斥量的开销。对于绝大部分的锁，在整个同步周期内都是不存在竞争的，因此也就不需要都使用互斥量进行同步，可以先采用 CAS 操作进行同步，如果 CAS 失败了再改用互斥量进行同步。
+
+当尝试获取一个锁对象时，如果锁对象标记为 0 01，说明锁对象的锁未锁定（unlocked）状态。此时虚拟机在当前线程的虚拟机栈中创建  Lock Record，然后使用 CAS 操作将对象的 Mark Word 更新为 Lock Record 指针。如果 CAS  操作成功了，那么线程就获取了该对象上的锁，并且对象的 Mark Word 的锁标记变为 00，表示该对象处于轻量级锁状态。
+
+ [![img](https://camo.githubusercontent.com/740f6e8b42fda5eaca9b83b919a1729059653705/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f62616161363831662d376335322d343139382d613561652d3330336239333836636634372e706e67)](https://camo.githubusercontent.com/740f6e8b42fda5eaca9b83b919a1729059653705/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f62616161363831662d376335322d343139382d613561652d3330336239333836636634372e706e67) 
+
+
+
+如果 CAS 操作失败了，虚拟机首先会检查对象的 Mark Word  是否指向当前线程的虚拟机栈，如果是的话说明当前线程已经拥有了这个锁对象，那就可以直接进入同步块继续执行，否则说明这个锁对象已经被其他线程线程抢占了。如果有两条以上的线程争用同一个锁，那轻量级锁就不再有效，要膨胀为重量级锁。
+
+### 偏向锁
+
+偏向锁的思想是偏向于让第一个获取锁对象的线程，这个线程在之后获取该锁就不再需要进行同步操作，甚至连 CAS 操作也不再需要。
+
+当锁对象第一次被线程获得的时候，进入偏向状态，标记为 1 01。同时使用 CAS 操作将线程 ID 记录到 Mark Word 中，如果 CAS 操作成功，这个线程以后每次进入这个锁相关的同步块就不需要再进行任何同步操作。
+
+当有另外一个线程去尝试获取这个锁对象时，偏向状态就宣告结束，此时撤销偏向（Revoke Bias）后恢复到未锁定状态或者轻量级锁状态。
+
+ [![img](https://camo.githubusercontent.com/8369c6bebffb9617694168381f5d7a62bb099e62/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f33393063393133622d356633312d343434662d626264622d3262383862363838653763652e6a7067)](https://camo.githubusercontent.com/8369c6bebffb9617694168381f5d7a62bb099e62/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f33393063393133622d356633312d343434662d626264622d3262383862363838653763652e6a7067) 
+
+## 十一、并发优化
+
+![img](https://images2018.cnblogs.com/blog/1285727/201806/1285727-20180625070314183-2036349251.png)
+
+### 锁优化
+
+#### 减少锁的持有时间
+
+例如避免给整个方法加锁
+
+```java
+public synchronized void syncMethod(){ 
+	othercode1(); 
+	mutextMethod(); 
+	othercode2(); 
+}
+```
+
+改进后
+
+```java
+public void syncMethod2(){ 
+	othercode1(); 
+	synchronized(this){ 
+		mutextMethod(); 
+	} 
+	othercode2(); 
+}
+```
+
+### 使用ThreadLocal
+
+
+
+### 使用无锁操作
+
+
+
+## 十二、多线程开发的良好习惯
 
 - 获取单例对象时需要保证线程安全，其中的方法也要保证线程安全。说明：资源驱动类、工具类、单例工厂类都需要注意。
 
@@ -1658,3 +2167,10 @@ ThreadLocal 从理论上讲并不是用来解决多线程并发问题的，因�
 - 多用并发集合少用同步集合，例如应该使用 ConcurrentHashMap 而不是 Hashtable。
 - 使用本地变量和不可变类来保证线程安全。
 - 使用线程池而不是直接创建线程，这是因为创建线程代价很高，线程池可以有效地利用有限的线程来启动任务。
+
+## 参考
+
+[Java并发编程实战系列15之原子遍历与非阻塞同步机制(Atomic Variables and Non-blocking Synchronization)]: https://cloud.tencent.com/developer/article/1113519
+
+[深入理解java内存模型]: https://www.jianshu.com/p/15106e9c4bf3
+
