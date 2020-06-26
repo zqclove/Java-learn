@@ -1642,7 +1642,7 @@ public class ThreadLocalExample {
 
 为了理解 ThreadLocal，先看以下代码：
 
-```
+```java
 public class ThreadLocalExample1 {
     public static void main(String[] args) {
         ThreadLocal threadLocal1 = new ThreadLocal();
@@ -1675,7 +1675,7 @@ public class ThreadLocalExample1 {
 ThreadLocal.ThreadLocalMap threadLocals = null;
 ```
 
-当调用一个 ThreadLocal 的 set(T value) 方法时，先得到当前线程的 ThreadLocalMap 对象，然后将 ThreadLocal->value 键值对插入到该 Map 中。
+当调用一个 ThreadLocal 的 set(T value) 方法时，先得到当前线程的 ThreadLocalMap 对象，然后将 **ThreadLocal->value 键值对**插入到该 Map 中。
 
 ```java
 public void set(T value) {
@@ -2044,9 +2044,349 @@ Thread 对象的结束先行发生于 join() 方法返回。
 
 互斥同步进入阻塞状态的开销都很大，应该尽量避免。在许多应用中，共享数据的锁定状态只会持续很短的一段时间。自旋锁的思想是让一个线程在请求一个共享数据的锁时执行忙循环（自旋）一段时间，如果在这段时间内能获得锁，就可以避免进入阻塞状态。
 
-自旋锁虽然能避免进入阻塞状态从而减少开销，但是它需要进行忙循环操作占用 CPU 时间，它只适用于共享数据的锁定状态很短的场景。
+自旋锁虽然能避免进入阻塞状态从而减少开销，但是它需要进行忙循环操作占用 CPU 时间，它**只适用于共享数据的锁定状态很短的场景。**
 
 在 JDK 1.6 中引入了自适应的自旋锁。自适应意味着自旋的次数不再固定了，而是由前一次在同一个锁上的自旋次数及锁的拥有者的状态来决定。
+
+非自旋锁在获取不到锁的时候会进入阻塞状态，从而进入内核态，当获取到锁的时候需要从内核态恢复，需要线程上下文切换。 （线程被阻塞后便进入内核（Linux）调度状态，这个会导致系统在用户态与内核态之间来回切换，严重影响锁的性能）
+
+自旋锁的优点：
+
+1. 自旋锁不会使线程状态发生切换，一直处于用户态，即线程一直都是active的。
+2. 不会使线程进入阻塞状态，减少了不必要的上下文切换，执行速度快。
+
+使用自旋锁会有以下一个问题：
+
+1. 如果某个线程持有锁的时间过长，就会导致其它等待获取锁的线程进入循环等待，消耗CPU。使用不当会造成CPU使用率极高。
+
+2. 上面Java实现的自旋锁不是公平的，即无法满足等待时间最长的线程优先获取锁。不公平的锁就会存在“线程饥饿”问题。
+
+**java实现自旋锁的简单例子：**
+
+```java
+public class SpinLock {
+
+private AtomicReference cas = new AtomicReference();
+
+public void lock() {
+
+	Thread current = Thread.currentThread();
+
+	// 利用CAS比较引用是否为空，不为空则将值设置为当前线程对象，以实现加锁的作用。
+	while (!cas.compareAndSet(null, current)) {
+	// DO nothing
+	}
+}
+
+public void unlock() {
+	Thread current = Thread.currentThread();
+    //录用CAS比较引用是否为当前线程，如是则设置为空，以实现释放锁的作用。
+	cas.compareAndSet(current, null);
+	}
+}
+```
+
+如上代码存在着不可重入的问题，即当一个线程第一次获取到该锁之后，在锁释放之前第二次获取该锁时，就不能成功获取到该锁。由于不满足CAS，所以第二次获取该锁时会进入while忙循环，而如果是可重入锁，第二次也是应该能够获取到该锁的。就极端思想，即使第二次能够成功获取到锁，在第一次释放锁的时候，第二次获取的锁也将被释放。
+
+**可重入自旋锁的实现：**
+
+```java
+public class ReentrantSpinLock {
+
+	private AtomicReference cas = new AtomicReference();
+	private int count;//引入一个计数器，记录当前线程获取该锁的次数。
+
+	public void lock() {
+		Thread current = Thread.currentThread();
+		if (current == cas.get()) { 
+		// 如果当前线程已经获取到了锁，线程数增加一，然后返回
+		count++;
+		return;
+		}
+		// 如果没获取到锁，则通过CAS自旋
+		while (!cas.compareAndSet(null, current)) {
+			// DO nothing
+		}
+	}
+    
+	public void unlock() {
+		Thread cur = Thread.currentThread();
+		if (cur == cas.get()) {
+			if (count > 0) {// 如果大于0，表示当前线程多次获取了该锁，释放锁通过count减一来模拟
+				count--;
+			} else {
+		// 如果count==0，可以将锁释放，这样就能保证获取锁的次数与释放锁的次数是一致的了。
+				cas.compareAndSet(cur, null);
+			}
+		}
+	}
+}
+```
+
+##### 其他自旋锁
+
+###### 1.TicketLock
+
+icketLock主要解决的是公平性的问题。
+
+**思路：**每当有线程获取锁的时候，就给该线程分配一个递增的id，我们称之为排队号，同时，锁对应一个服务号，每当有线程释放锁，服务号就会递增，此时如果服务号与某个线程排队号一致，那么该线程就获得锁，由于排队号是递增的，所以就保证了最先请求获取锁的线程可以最先获取到锁，就实现了公平性。
+
+可以想象成银行办理业务排队，排队的每一个顾客都代表一个需要请求锁的线程，而银行服务窗口表示锁，每当有窗口服务完成就把自己的服务号加一，此时在排队的所有顾客中，只有自己的排队号与服务号一致的才可以得到服务。
+
+实现代码：
+
+```java
+public class TicketLock {
+
+    /**
+     * 服务号，初始化给定1作为第一号窗口
+     */
+    private AtomicInteger serviceNum = new AtomicInteger(1);
+
+    /** 
+     * 排队号 
+     */
+    private AtomicInteger ticketNum = new AtomicInteger();
+
+    /** 
+     * lock:获取锁，如果获取成功，返回当前线程的排队号，获取排队号用于释放锁. 
+     * @return 
+     */
+    public int lock() {
+        int currentTicketNum = ticketNum.incrementAndGet();
+        while (currentTicketNum != serviceNum.get()) {
+            // Do nothing
+        }
+        return currentTicketNum;
+    }
+
+    /**
+     * unlock:释放锁，传入当前持有锁的线程的排队号
+     * @param ticketnum
+     */
+    public void unlock(int ticketnum) {
+        serviceNum.compareAndSet(ticketnum, ticketnum + 1);
+    }
+}
+```
+
+上面的实现方式是，线程获取锁之后，将它的排队号返回，等该线程释放锁的时候，需要将该排队号传入。但这样是有风险的，因为这个排队号是可以被修改的，一旦排队号被不小心修改了，那么锁将不能被正确释放。一种更好的实现方式如下（使用ThreadLocal存储线程的排队号（ThreadLocal是线程安全的，但可能会造成内存泄露））:
+
+```java
+public class TicketLockV2 {
+
+    /** 
+     * 服务号，初始化给定1作为第一号窗口
+     */
+    private AtomicInteger serviceNum = new AtomicInteger(1);
+
+    /** 
+     * 排队号 
+     */
+    private AtomicInteger ticketNum = new AtomicInteger();
+
+    /** 
+     * 新增一个ThreadLocal，用于存储每个线程的排队号 
+     */
+    private ThreadLocal ticketNumHolder = new ThreadLocal();
+
+    public void lock() {
+        int currentTicketNum = ticketNum.incrementAndGet();
+		// 获取锁的时候，将当前线程的排队号保存起来
+        ticketNumHolder.set(currentTicketNum);
+        while (currentTicketNum != serviceNum.get()) {
+			// Do nothing
+        }
+    }
+
+    public void unlock() {
+		// 释放锁，从ThreadLocal中获取当前线程的排队号
+        Integer currentTickNum = ticketNumHolder.get();
+        serviceNum.compareAndSet(currentTickNum, currentTickNum + 1);
+    }
+}
+```
+
+**TicketLock存在的问题**
+
+多处理器系统上，每个进程/线程占用的处理器都在读写同一个变量serviceNum ，每次读写操作都必须在多个处理器缓存之间进行缓存同步，这会导致繁重的系统总线和内存的流量，大大降低系统整体的性能。
+
+下面介绍的MCSLock和CLHLock就是解决这个问题的。
+
+###### **2. CLHLock**
+
+CLH锁是一种基于链表的可扩展、高性能、公平的自旋锁，申请线程只在本地变量上自旋，它不断轮询前驱的状态，如果发现前驱释放了锁就结束自旋，获得锁。
+
+实现代码如下：
+
+```java
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+
+/**
+* CLH的发明人是：Craig，Landin and Hagersten。
+* 代码来源：http://ifeve.com/java_lock_see2/
+*/
+public class CLHLock {
+
+	/**
+	* 定义一个节点，默认的lock状态为true
+	*/
+	public static class CLHNode {
+		private volatile boolean isLocked = true;
+	}
+
+	/**
+	* 尾部节点,只用一个节点即可
+	*/
+	private volatile CLHNode tail;
+
+	private static final ThreadLocal LOCAL = new ThreadLocal();
+
+	private static final AtomicReferenceFieldUpdater UPDATER = 			 AtomicReferenceFieldUpdater.newUpdater(CLHLock.class, CLHNode.class,"tail");
+
+	public void lock() {
+		// 新建节点并将节点与当前线程保存起来
+		CLHNode node = new CLHNode();
+		LOCAL.set(node);
+		// 将新建的节点设置为尾部节点（虚拟尾部），并返回旧的节点（原子操作），这里旧的节点实际上就是当前		节点的前驱节点
+		CLHNode preNode = UPDATER.getAndSet(this, node);
+		if (preNode != null) {
+		// 前驱节点不为null表示当前锁被其他线程占用，通过不断轮询判断前驱节点的锁标志位，等待前驱节点释放锁
+			while (preNode.isLocked) {
+			}
+            //为什么需要这两个条语句？防止失误？什么失误？
+			preNode = null;
+			LOCAL.set(node);
+		}
+        // 如果不存在前驱节点，表示该锁没有被其他线程占用，则当前线程获得锁	
+	}
+
+	public void unlock() {
+		// 获取当前线程对应的节点
+		CLHNode node = LOCAL.get();
+		// 如果tail节点等于node，则将tail节点更新为null，同时将node的lock状态职位false，表示当前线程释放了锁。如果不等于，则代表当前锁不属于该线程。
+		if (!UPDATER.compareAndSet(this, node, null)) {
+            //将锁标志位设置为false，让其他线程结束自旋。
+			node.isLocked = false;
+		}
+		node = null;
+	}
+}
+```
+
+**CLHLock流程图及其设计到的数据结构**
+
+![CLHLock流程及其数据结构](D:\firefox download\未命名文件(16).jpg)
+
+
+
+###### **3. MCSLock**
+
+MCSLock则是对本地变量的节点进行循环。
+
+```java
+/**
+ * 
+ * MCS:发明人名字John Mellor-Crummey和Michael Scott
+ * 
+ * 代码来源：http://ifeve.com/java_lock_see2/
+ * 
+ */
+public class MCSLock {
+
+    /**
+     * 
+     * 节点，记录当前节点的锁状态以及后驱节点
+     * 
+     */
+    public static class MCSNode {
+        volatile MCSNode next;
+        volatile boolean isLocked = true;
+    }
+
+    private static final ThreadLocal NODE = new ThreadLocal();
+
+	// 队列
+    @SuppressWarnings("unused")
+    private volatile MCSNode queue;
+
+	// queue更新器
+    private static final AtomicReferenceFieldUpdater UPDATER = AtomicReferenceFieldUpdater.newUpdater(MCSLock.class,MCSNode.class,"queue");
+
+    public void lock() {
+		// 创建节点并保存到ThreadLocal中
+        MCSNode currentNode = new MCSNode();
+        NODE.set(currentNode);
+		// 将queue设置为当前节点，并且返回之前的节点
+        MCSNode preNode = UPDATER.getAndSet(this, currentNode);
+        if (preNode != null) {
+			// 如果之前节点不为null，表示锁已经被其他线程持有
+            preNode.next = currentNode;
+			// 循环判断，直到当前节点的锁标志位为false（前驱节点释放锁时会将当前节点锁标志位置false）。
+            while (currentNode.isLocked) {
+            }
+        }
+    }
+
+    public void unlock() {
+        MCSNode currentNode = NODE.get();
+		// next为null表示没有正在等待获取锁的线程
+        if (currentNode.next == null) {
+		// 更新状态并设置queue为null
+            if (UPDATER.compareAndSet(this, currentNode, null)) {
+				// 如果成功了，表示queue==currentNode,即当前节点后面没有节点了
+                return;
+            } else {
+				// 如果不成功，表示queue!=currentNode,即当前节点后面多了一个节点，表示有线程在等待
+				// 如果当前节点的后续节点为null，则需要等待其不为null（参考加锁方法）
+                // currentNode.next==null的情况是：其他线程在获取锁时将更新器设置为其当前节点，但为进			入判断后的preNode.next=currentNode的语句。
+                while (currentNode.next == null) {
+                }
+            }
+        } else {
+			// 如果不为null，表示有线程在等待获取锁，此时将等待线程对应的节点锁状态更新为false，同时将当	前线程的后继节点设为null
+            currentNode.next.isLocked = false;
+            currentNode.next = null;
+        }
+    }
+}
+```
+
+###### **4. CLHLock 和 MCSLock**
+
+都是基于链表，不同的是CLHLock是基于隐式链表，没有真正的后续节点属性，MCSLock是显式链表（伪？），有一个指向后续节点的属性。
+
+将获取锁的线程状态借助节点(node)保存,每个线程都有一份独立的节点，这样就解决了TicketLock多处理器缓存同步的问题。（自适应的自旋锁）
+
+**自旋锁与互斥锁**
+
+自旋锁与互斥锁都是为了实现保护资源共享的机制。
+
+无论是自旋锁还是互斥锁，在任意时刻，都最多只能有一个保持者。
+
+获取互斥锁的线程，如果锁已经被占用，则该线程将进入睡眠状态；获取自旋锁的线程则不会睡眠，而是一直循环等待锁释放。
+
+###### 总结
+
+**自旋锁**：线程获取锁的时候，如果锁被其他线程持有，则当前线程将循环等待，直到获取到锁。
+
+自旋锁等待期间，线程的状态不会改变，线程一直是用户态并且是活动的(active)。
+
+自旋锁如果持有锁的时间太长，则会导致其它等待获取锁的线程耗尽CPU。
+
+自旋锁本身无法保证公平性，同时也无法保证可重入性。
+
+基于自旋锁，可以实现具备公平性和可重入性质的锁。
+
+TicketLock:采用类似银行排号叫好的方式实现自旋锁的公平性，但是由于不停的读取serviceNum，每次读写操作都必须在多个处理器缓存之间进行缓存同步，这会导致繁重的系统总线和内存的流量，大大降低系统整体的性能。
+
+CLHLock和MCSLock通过链表的方式避免了减少了处理器缓存同步，极大的提高了性能，区别在于CLHLock是通过轮询其前驱节点的状态，而MCS则是查看当前节点的锁状态。
+
+CLHLock在NUMA架构下使用会存在问题。在没有cache的NUMA系统架构中，由于CLHLock是在当前节点的前一个节点上自旋,**NUMA架构中处理器访问本地内存的速度高于通过网络访问其他节点的内存**，所以CLHLock在NUMA架构上不是最优的自旋锁。
+
+###### NUMA架构简单介绍
+
+NUMA*（Non Uniform Memory Access Architecture）*技术可以使众多服务器像单一系统那样运转，同时保留小系统便于编程和管理的优点。基于电子商务应用对内存访问提出的更高的要求，NUMA也向复杂的结构设计提出了挑战。
 
 ### 锁消除
 
@@ -2054,9 +2394,16 @@ Thread 对象的结束先行发生于 join() 方法返回。
 
 锁消除主要是通过逃逸分析来支持，如果堆上的共享数据不可能逃逸出去被其它线程访问到，那么就可以把它们当成私有数据对待，也就可以将它们的锁进行消除。
 
+锁消除是发生在编译器级别的一种锁优化方式。
+有时候我们写的代码完全不需要加锁，却执行了加锁操作。
+
+我们可以通过编译器将其优化，将锁消除，前提是java必须运行在server模式（server模式会比client模式作更多的优化），同时必须开启逃逸分析:
+
+-server -XX:+DoEscapeAnalysis -XX:+EliminateLocks
+
 对于一些看起来没有加锁的代码，其实隐式的加了很多锁。例如下面的字符串拼接代码就隐式加了锁：
 
-```
+```java
 public static String concatString(String s1, String s2, String s3) {
     return s1 + s2 + s3;
 }
@@ -2064,7 +2411,7 @@ public static String concatString(String s1, String s2, String s3) {
 
 String 是一个不可变的类，编译器会对 String 的拼接自动优化。在 JDK 1.5 之前，会转化为 StringBuffer 对象的连续 append() 操作：
 
-```
+```java
 public static String concatString(String s1, String s2, String s3) {
     StringBuffer sb = new StringBuffer();
     sb.append(s1);
@@ -2075,6 +2422,33 @@ public static String concatString(String s1, String s2, String s3) {
 ```
 
 每个 append() 方法中都有一个同步块。虚拟机观察变量 sb，很快就会发现它的动态作用域被限制在 concatString()  方法内部。也就是说，sb 的所有引用永远不会逃逸到 concatString() 方法之外，其他线程无法访问到它，因此可以进行消除。
+
+##### 逃逸分析介绍
+
+逃逸分析的基本行为就是分析对象动态作用域：当一个对象在方法中被定义后，它可能被外部方法所引用，例如作为调用参数传递到其他地方中，称为方法逃逸。
+
+例如以下代码：
+
+```java
+public static StringBuffer craeteStringBuffer(String s1, String s2) {
+    StringBuffer sb = new StringBuffer();
+    sb.append(s1);
+    sb.append(s2);
+    return sb;
+}
+
+public static String createStringBuffer(String s1, String s2) {
+    StringBuffer sb = new StringBuffer();
+    sb.append(s1);
+    sb.append(s2);
+    return sb.toString();
+}
+
+```
+
+第一段代码中的`sb`就逃逸了，而第二段代码中的`sb`就没有逃逸。因为第一段代码的sb对象作返回值返回给其他方法调用。
+
+
 
 ### 锁粗化
 
@@ -2148,6 +2522,204 @@ public void syncMethod2(){
 }
 ```
 
+#### 减小锁的粒度
+
+将大对象，拆成小对象，大大增加并行度，降低锁竞争. 如此一来偏向锁，轻量级锁成功率提高. 
+
+一个简单的例子就是jdk内置的ConcurrentHashMap与SynchronizedMap。
+
+**Collections.synchronizedMap源码分析**
+
+Collections工具类的静态内部类，对构造函数传入的Collection的所有方法都对mutex进行加锁，作用于同一对象。
+
+**字段：**
+
+```java
+private final Map<K,V> m;     // Backing Map
+final Object      mutex;        // Object on which to synchronize
+private transient Set<K> keySet;
+private transient Set<Map.Entry<K,V>> entrySet;
+private transient Collection<V> values;
+```
+
+其构造函数有：
+
+```java
+		SynchronizedCollection(Collection<E> c) {
+            this.c = Objects.requireNonNull(c);
+            mutex = this;
+        }
+
+        SynchronizedCollection(Collection<E> c, Object mutex) {
+            this.c = Objects.requireNonNull(c);
+            this.mutex = Objects.requireNonNull(mutex);
+        }
+```
+
+其本质是在读写map操作上都加了锁, 在高并发下性能一般.
+
+```java
+        public int size() {
+            synchronized (mutex) {return m.size();}
+        }
+        public boolean isEmpty() {
+            synchronized (mutex) {return m.isEmpty();}
+        }
+        public boolean containsKey(Object key) {
+            synchronized (mutex) {return m.containsKey(key);}
+        }
+        public boolean containsValue(Object value) {
+            synchronized (mutex) {return m.containsValue(value);}
+        }
+        public V get(Object key) {
+            synchronized (mutex) {return m.get(key);}
+        }
+
+        public V put(K key, V value) {
+            synchronized (mutex) {return m.put(key, value);}
+        }
+        public V remove(Object key) {
+            synchronized (mutex) {return m.remove(key);}
+        }
+        public void putAll(Map<? extends K, ? extends V> map) {
+            synchronized (mutex) {m.putAll(map);}
+        }
+        public void clear() {
+            synchronized (mutex) {m.clear();}
+        }
+```
+
+**ConcurrentHashMap源码分析：**
+
+内部使用分区Segment来表示不同的部分, 每个分区其实就是一个小的hashtable. 各自有自己的锁. 
+
+只要多个修改发生在不同的分区, 他们就可以并发的进行. 把一个整体分成了16个Segment, 最高支持16个线程并发修改. 
+
+代码中运用了很多volatile声明共享变量, 第一时间获取修改的内容, 性能较好.
+
+**部分字段：**
+
+所有属性都使用volatile修饰。
+
+```java
+	/**
+     * 节点数组。在第一次插入时惰性初始化。大小总是2的幂。通过迭代器直接访问。
+     */
+    transient volatile Node<K,V>[] table;
+
+    /**
+     * 使用下一个table; 只有在调整大小时是非空的。
+     */
+    private transient volatile Node<K,V>[] nextTable;
+
+    /**
+     * 基本计数器值，主要在没有争用时使用，但也用作表初始化竞争期间的回退。通过CAS更新数据。
+     */
+    private transient volatile long baseCount;
+
+    /**
+     * 表初始化和调整大小控件。当为负数时，表正在初始化或调整大小:-1表示初始化，否则为-(1 +活跃的正在调整大 	   * 小的线程数)。否则，当表为null时，保存创建时要使用的初始表大小，或默认为0。初始化之后，保存要调整表大	   * 小的下一个元素计数值。
+     */
+    private transient volatile int sizeCtl;
+
+    /**
+     * 调整大小时要分割的下一个表索引(加1)。
+     */
+    private transient volatile int transferIndex;
+
+    /**
+     * 自旋锁(通过CAS锁定)在调整大小和/或创建反单元格时使用。
+     */
+    private transient volatile int cellsBusy;
+    /**
+     * 计数器单元表。当非空时，大小是2的乘方。
+     */
+    private transient volatile CounterCell[] counterCells;
+```
+
+**构造函数：**
+
+```java
+    /**
+     * Creates a new, empty map with an initial table size
+     * accommodating the specified number of elements without the need
+     * to dynamically resize.
+     *
+     * @param initialCapacity The implementation performs internal
+     * sizing to accommodate this many elements.
+     * @throws IllegalArgumentException if the initial capacity of
+     * elements is negative
+     */
+    public ConcurrentHashMap(int initialCapacity) {
+        if (initialCapacity < 0)
+            throw new IllegalArgumentException();
+        int cap = ((initialCapacity >= (MAXIMUM_CAPACITY >>> 1)) ?
+                   MAXIMUM_CAPACITY :
+                   tableSizeFor(initialCapacity + (initialCapacity >>> 1) + 1));
+        this.sizeCtl = cap;
+    }
+    /**
+     * Creates a new map with the same mappings as the given map.
+     *
+     * @param m the map
+     */
+    public ConcurrentHashMap(Map<? extends K, ? extends V> m) {
+        this.sizeCtl = DEFAULT_CAPACITY;
+        putAll(m);
+    }
+
+    /**
+     * Creates a new, empty map with an initial table size based on
+     * the given number of elements ({@code initialCapacity}) and
+     * initial table density ({@code loadFactor}).
+     *
+     * @param initialCapacity the initial capacity. The implementation
+     * performs internal sizing to accommodate this many elements,
+     * given the specified load factor.
+     * @param loadFactor the load factor (table density) for
+     * establishing the initial table size
+     * @throws IllegalArgumentException if the initial capacity of
+     * elements is negative or the load factor is nonpositive
+     *
+     * @since 1.6
+     */
+    public ConcurrentHashMap(int initialCapacity, float loadFactor) {
+        this(initialCapacity, loadFactor, 1);
+    }
+
+    /**
+     * Creates a new, empty map with an initial table size based on
+     * the given number of elements ({@code initialCapacity}), table
+     * density ({@code loadFactor}), and number of concurrently
+     * updating threads ({@code concurrencyLevel}).
+     *
+     * @param initialCapacity the initial capacity. The implementation
+     * performs internal sizing to accommodate this many elements,
+     * given the specified load factor.
+     * @param loadFactor the load factor (table density) for
+     * establishing the initial table size
+     * @param concurrencyLevel the estimated number of concurrently
+     * updating threads. The implementation may use this value as
+     * a sizing hint.
+     * @throws IllegalArgumentException if the initial capacity is
+     * negative or the load factor or concurrencyLevel are
+     * nonpositive
+     */
+    public ConcurrentHashMap(int initialCapacity,
+                             float loadFactor, int concurrencyLevel) {
+        if (!(loadFactor > 0.0f) || initialCapacity < 0 || concurrencyLevel <= 0)
+            throw new IllegalArgumentException();
+        if (initialCapacity < concurrencyLevel)   // Use at least as many bins
+            initialCapacity = concurrencyLevel;   // as estimated threads
+        long size = (long)(1.0 + (long)initialCapacity / loadFactor);
+        int cap = (size >= (long)MAXIMUM_CAPACITY) ?
+            MAXIMUM_CAPACITY : tableSizeFor((int)size);
+        this.sizeCtl = cap;
+    }
+```
+
+
+
 ### 使用ThreadLocal
 
 
@@ -2173,4 +2745,6 @@ public void syncMethod2(){
 [Java并发编程实战系列15之原子遍历与非阻塞同步机制(Atomic Variables and Non-blocking Synchronization)]: https://cloud.tencent.com/developer/article/1113519
 
 [深入理解java内存模型]: https://www.jianshu.com/p/15106e9c4bf3
+
+[认真的讲一讲：自旋锁到底是什么]: https://www.jianshu.com/p/9d3660ad4358
 
