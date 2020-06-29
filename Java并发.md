@@ -1574,7 +1574,7 @@ J.U.C 包提供了一个带有标记的原子引用类 AtomicStampedReference  �
 
 与锁相比，volatile是一种更轻量级的同步机制，因为使用volatile不会发生上下文切换或者线程调度操作，但是volatile的指明问题就是虽然保证了可见性，但是原子性无法保证，比如i++的字节码就是N行。
 
-锁的其他缺点还包括，如果一个线程正在等待锁，它不能做任何事情，如果一个线程在持有锁的情况下呗延迟执行了，例如发生了缺页错误，调度延迟，那么就没法执行。如果被阻塞的线程优先级较高，那么就会出现priority invesion的问题，被永久的阻塞下去。
+锁的其他缺点还包括，如果一个线程正在等待锁，它不能做任何事情，如果一个线程在持有锁的情况下被延迟执行了，例如发生了缺页错误，调度延迟，那么就没法执行。如果被阻塞的线程优先级较高，那么就会出现priority invesion的问题，被永久的阻塞下去。
 
 #### 无同步方案
 
@@ -2123,9 +2123,9 @@ public class ReentrantSpinLock {
 }
 ```
 
-##### 其他自旋锁
+#### 其他自旋锁
 
-###### 1.TicketLock
+##### 1.TicketLock
 
 icketLock主要解决的是公平性的问题。
 
@@ -2213,7 +2213,7 @@ public class TicketLockV2 {
 
 下面介绍的MCSLock和CLHLock就是解决这个问题的。
 
-###### **2. CLHLock**
+##### **2. CLHLock**
 
 CLH锁是一种基于链表的可扩展、高性能、公平的自旋锁，申请线程只在本地变量上自旋，它不断轮询前驱的状态，如果发现前驱释放了锁就结束自旋，获得锁。
 
@@ -2280,7 +2280,7 @@ public class CLHLock {
 
 
 
-###### **3. MCSLock**
+##### **3. MCSLock**
 
 MCSLock则是对本地变量的节点进行循环。
 
@@ -2352,7 +2352,7 @@ public class MCSLock {
 }
 ```
 
-###### **4. CLHLock 和 MCSLock**
+##### **4. CLHLock 和 MCSLock**
 
 都是基于链表，不同的是CLHLock是基于隐式链表，没有真正的后续节点属性，MCSLock是显式链表（伪？），有一个指向后续节点的属性。
 
@@ -2366,7 +2366,7 @@ public class MCSLock {
 
 获取互斥锁的线程，如果锁已经被占用，则该线程将进入睡眠状态；获取自旋锁的线程则不会睡眠，而是一直循环等待锁释放。
 
-###### 总结
+##### 总结
 
 **自旋锁**：线程获取锁的时候，如果锁被其他线程持有，则当前线程将循环等待，直到获取到锁。
 
@@ -2384,13 +2384,13 @@ CLHLock和MCSLock通过链表的方式避免了减少了处理器缓存同步，
 
 CLHLock在NUMA架构下使用会存在问题。在没有cache的NUMA系统架构中，由于CLHLock是在当前节点的前一个节点上自旋,**NUMA架构中处理器访问本地内存的速度高于通过网络访问其他节点的内存**，所以CLHLock在NUMA架构上不是最优的自旋锁。
 
-###### NUMA架构简单介绍
+##### NUMA架构简单介绍
 
 NUMA*（Non Uniform Memory Access Architecture）*技术可以使众多服务器像单一系统那样运转，同时保留小系统便于编程和管理的优点。基于电子商务应用对内存访问提出的更高的要求，NUMA也向复杂的结构设计提出了挑战。
 
 ### 锁消除
 
-锁消除是指对于被检测出不可能存在竞争的共享数据的锁进行消除。
+锁消除是Java虚拟机在JIT编译（即时编译）时，通过对运行上下文的扫描，去除不可能存在共享资源竞争的锁，通过锁消除，可以节省毫无意义的请求锁时间。
 
 锁消除主要是通过逃逸分析来支持，如果堆上的共享数据不可能逃逸出去被其它线程访问到，那么就可以把它们当成私有数据对待，也就可以将它们的锁进行消除。
 
@@ -2423,9 +2423,9 @@ public static String concatString(String s1, String s2, String s3) {
 
 每个 append() 方法中都有一个同步块。虚拟机观察变量 sb，很快就会发现它的动态作用域被限制在 concatString()  方法内部。也就是说，sb 的所有引用永远不会逃逸到 concatString() 方法之外，其他线程无法访问到它，因此可以进行消除。
 
-##### 逃逸分析介绍
+#### 逃逸分析介绍
 
-逃逸分析的基本行为就是分析对象动态作用域：当一个对象在方法中被定义后，它可能被外部方法所引用，例如作为调用参数传递到其他地方中，称为方法逃逸。
+逃逸分析的基本行为就是分析对象动态作用域：当一个对象在方法中被定义后，它可能被外部方法所引用，例如作为调用参数传递到其他地方中，称为方法逃逸。逃逸分析 从jdk 1.7开始已经默认开始逃逸分析。
 
 例如以下代码：
 
@@ -2448,17 +2448,113 @@ public static String createStringBuffer(String s1, String s2) {
 
 第一段代码中的`sb`就逃逸了，而第二段代码中的`sb`就没有逃逸。因为第一段代码的sb对象作返回值返回给其他方法调用。
 
+一、同步省略。如果一个对象被发现只能从一个线程被访问到，那么对于这个对象的操作可以不考虑同步。
 
+二、将堆分配转化为栈分配。如果一个对象在子程序中被分配，要使指向该对象的指针永远不会逃逸，对象可能是栈分配的候选，而不是堆分配。
+
+三、分离对象或标量替换。有的对象可能不需要作为一个连续的内存结构存在也可以被访问到，那么对象的部分（或全部）可以不存储在内存，而是存储在CPU寄存器中。
+
+##### 同步省略
+
+在动态编译同步块时，JIT编译器可以借助逃逸分析来判断同步块所使用的锁对象是否只在一个线程中被访问而没有逃逸到其他线程中。
+
+如果同步块所使用的锁对象只能被一个线程访问，那么JIT编译器在编译这个同步块的时候就回取消对这部分代码的同步。这个取消同步的过程叫同步省略，也叫锁消除。
+
+如下代码：
+
+```java
+    public static void synLock() {
+        Integer syn = new Integer(0);
+        synchronized(syn) {
+            syn++;
+        }
+    }
+```
+
+代码中对syn对象进行加锁，但是syn对象生命周期只在synLock（）方法中，并不会被其他线程访问到，所以在JIT编译阶段就会被优化成如下代码：
+
+```java
+    public static void synLock() {
+        Integer syn = new Integer(0);
+        syn++;
+    }
+```
+
+所以，在使用synchronized的时候，如果JIT经过逃逸分析之后发现并无线程安全问题的话，就会做锁消除。
+
+##### 标量替换
+
+标量（Scalar）是指一个无法再分解成更小的数据的数据。Java中的原始数据类型就是标量。相对的，那些还可以分解的数据叫做聚合量（Aggregate），Java中的对象就是聚合量，因此它可以分解成其他聚合量和标量。
+
+在JIT阶段，如果经过逃逸分析，发现一个对象不会被外界访问的话，那么经过JIT优化，就会把这个对象拆解成若干个其中包含的若干个成员变量来代替。这个过程就是标量替换。
+
+```java
+public static void main(String[] args) {
+   alloc();
+}
+
+private static void alloc() {
+   Point point = new Point（1,2）;
+   System.out.println("point.x="+point.x+"; point.y="+point.y);
+}
+class Point{
+    private int x;
+    private int y;
+}
+```
+
+以上代码中，point对象并没有逃逸出alloc（）方法，并且point对象是可以拆解成标量的。那么，JIT就不会直接创建Point对象，而是直接使用两个标量int x，int y来代替Point对象。
+
+经过标量替换后，代码会变成：
+
+```java
+private static void alloc() {
+   int x = 1;
+   int y = 2;
+   System.out.println("point.x="+x+"; point.y="+y);
+}
+```
+
+可以看到，Point这个聚合量经过逃逸分析后，发现他并没有逃逸，就被替换成两个标量了。那么标量替换有什么好处呢？就是可以大大减少堆内存的占用。因为一旦不需要创建对象了，那么就不再需要分配堆内存了。
+
+标量替换为栈上分配提供了很好的基础。
+
+##### 栈上分配
+
+在Java虚拟机中，对象是在Java堆中分配内存的，这是一个普遍的常识。但是，有一种特殊情况，那就是如果经过逃逸分析后发现，一个对象并没有逃逸出方法的话，那么就可能被优化成栈上分配。这样就无需在堆上分配内存，也无须进行垃圾回收了。
+
+关于栈上分配的详细介绍，可以参考**对象和数组并不是都在堆上分配内存的**。
+
+这里，还是要简单说一下，其实在现有的虚拟机中，并没有真正的实现栈上分配，**在对象和数组并不是都在堆上分配内存的**中我们的例子中，对象没有在堆上分配，其实是标量替换实现的。
+
+##### 逃逸分析弊端
+
+关于逃逸分析的论文在1999年就已经发表了，但直到JDK 1.6才有实现，而且这项技术到如今也并不是十分成熟的。
+
+其根本原因就是无法保证逃逸分析的性能消耗一定能高于他的消耗。虽然经过逃逸分析可以做标量替换、栈上分配、和锁消除。但是逃逸分析自身也是需要进行一系列复杂的分析的，这其实也是一个相对耗时的过程。
+
+一个极端的例子，就是经过逃逸分析之后，发现没有一个对象是不逃逸的。那这个逃逸分析的过程就白白浪费掉了。
 
 ### 锁粗化
 
 如果一系列的连续操作都对同一个对象反复加锁和解锁，频繁的加锁操作就会导致性能损耗。
 
-上一节的示例代码中连续的 append()  方法就属于这类情况。如果虚拟机探测到由这样的一串零碎的操作都对同一个对象加锁，将会把加锁的范围扩展（粗化）到整个操作序列的外部。对于上一节的示例代码就是扩展到第一个 append() 操作之前直至最后一个 append() 操作之后，这样只需要加锁一次就可以了。
+```java
+    public String cancatString(String s1, String s2, String s3){
+        StringBuffer sb = new StringBuffer();
+        sb.append(s1);
+        sb.append(s2);
+        sb.append(s3);
+        return sb.toString();
+    }
+
+```
+
+如上的示例代码中连续的 append()  方法就属于这类情况。如果虚拟机探测到由这样的一串零碎的操作都对同一个对象加锁，将会把加锁的范围扩展（粗化）到整个操作序列的外部。对于如上的示例代码就是扩展到第一个 append() 操作之前直至最后一个 append() 操作之后，这样只需要加锁一次就可以了。
 
 ### 轻量级锁
 
-JDK 1.6 引入了偏向锁和轻量级锁，从而让锁拥有了四个状态：无锁状态（unlocked）、偏向锁状态（biasble）、轻量级锁状态（lightweight locked）和重量级锁状态（inflated）。
+1.6 引入了偏向锁和轻量级锁，从而让锁拥有了四个状态：无锁状态（unlocked）、偏向锁状态（biasble）、轻量级锁状态（lightweight locked）和重量级锁状态（inflated）。
 
 以下是 HotSpot 虚拟机对象头的内存布局，这些数据被称为 Mark Word。其中 tag bits 对应了五个状态，这些状态在右侧的 state 表格中给出。除了 marked for gc 状态，其它四个状态已经在前面介绍过了。
 
@@ -2491,6 +2587,42 @@ JDK 1.6 引入了偏向锁和轻量级锁，从而让锁拥有了四个状态：
 当有另外一个线程去尝试获取这个锁对象时，偏向状态就宣告结束，此时撤销偏向（Revoke Bias）后恢复到未锁定状态或者轻量级锁状态。
 
  [![img](https://camo.githubusercontent.com/8369c6bebffb9617694168381f5d7a62bb099e62/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f33393063393133622d356633312d343434662d626264622d3262383862363838653763652e6a7067)](https://camo.githubusercontent.com/8369c6bebffb9617694168381f5d7a62bb099e62/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f33393063393133622d356633312d343434662d626264622d3262383862363838653763652e6a7067) 
+
+### 锁过程及MarkWord
+
+![img](https://upload-images.jianshu.io/upload_images/4491294-e3bcefb2bacea224.png?imageMogr2/auto-orient/strip|imageView2/2/w/1200)
+
+线程访问同步代码块时，判断当前锁对象是处于何种状态：
+
+- 01（标志位）：判断是否为偏向锁————1 01（偏向锁）或 0 01（无锁状态）：
+
+  1.偏向锁（1 01）：检查对象头的Mark Word中记录的是否是当前线程ID：
+
+  ​	1.1.是：获得偏向锁（Thread ID | epoch | age | （偏向锁）1 | （标志位）01）——》执行同步代码块；
+
+  ​	1.2.否：CAS操作将锁对象中的Thread ID 替换为当前线程ID：
+
+  ​		1.2.1.成功：获得偏向锁（Thread ID | epoch | age | （偏向锁）1 | （标志位）01）——》执行同步代码块；
+
+  ​		1.2.2.失败：其他线程尝试获取这个对象，开始偏向锁撤销（等待竞争出现才释放锁的机制），当原持有偏向锁的线程达到安全点（没有线程在执行字节码），判断原持有偏向锁的线程处于什么线程状态：
+
+  ​			1.2.2.1.未退出同步代码块：升级为轻量级锁，更新原持有偏向锁及线程的Mark Word，该状态表示原持有偏向锁线程持有该偏向锁，需要将该锁膨胀为轻量级锁，进入轻量级锁的步骤；
+
+  ​			1.2.2.2.未活动状态/已退出同步代码块：原持有偏向锁线程释放锁 （空 | （无锁）0 | （标志位）01），唤醒原持有偏向锁的线程，该状态表示原持有偏向锁线程不持有该偏向锁，会撤销对象回到可偏向但还没有偏向的状态，然后重新尝试获取锁；
+
+  2.无锁状态（0 01）：跳到CAS操作将锁对象中的Thread ID 替换为当前线程ID的步骤...
+
+- 轻量级锁 00（标志位）：操作当前线程的栈中分配记录，拷贝对象头中的Mark Word到当前线程的锁记录中，尝试CAS操作，将对象头的Mark Word中锁记录指针指向当前线程锁记录：
+
+  ​	1.成功：获取轻量级锁（指向当前线程锁记录的指针 | （标志位）00），执行同步代码块，开始尝试轻量级锁解锁。使用CAS操作解锁，满足两个CAS操作：一、对象头中的Mark Word中锁记录指针是否仍是指向当前线程锁记录（判断该锁是否被其他线程争用）；二、拷贝在当前线程锁记录的Mark Word信息是否与头像中的Mark Word一致（判断是否是同一个锁）；
+
+  ​		1.1.成功：释放锁；
+
+  ​		1.2.失败：表示正在有线程争用该锁，会以一种“非常慢”的方式来正确的释放锁并通知其他等待线程来获取锁，开始新一轮竞争；
+
+  ​	2.失败：自旋尝试获取锁，达到一定次数CAS操作后仍然未成功则膨胀为重量级锁（有自适应的自旋锁）
+
+- 重量级锁 10（标志位）：重量级锁（指向重量级锁monitor的指针 | （标志位）10），争用mutex（互斥体），挂起当前线程，等待唤醒；
 
 ## 十一、并发优化
 
@@ -2528,7 +2660,7 @@ public void syncMethod2(){
 
 一个简单的例子就是jdk内置的ConcurrentHashMap与SynchronizedMap。
 
-**Collections.synchronizedMap源码分析**
+##### **Collections.synchronizedMap源码分析**
 
 Collections工具类的静态内部类，对构造函数传入的Collection的所有方法都对mutex进行加锁，作用于同一对象。
 
@@ -2589,13 +2721,89 @@ private transient Collection<V> values;
         }
 ```
 
-**ConcurrentHashMap源码分析：**
+##### **ConcurrentHashMap源码分析**
 
-内部使用分区Segment来表示不同的部分, 每个分区其实就是一个小的hashtable. 各自有自己的锁. 
+**JDK-1.7版本：**
 
-只要多个修改发生在不同的分区, 他们就可以并发的进行. 把一个整体分成了16个Segment, 最高支持16个线程并发修改. 
+JDK1.7的实现是**数组+Segment+分段锁**的方式。
 
-代码中运用了很多volatile声明共享变量, 第一时间获取修改的内容, 性能较好.
+1.Segment（分段锁）
+
+ConcurrentHashMap中的**分段锁称为Segment**，它即类似于HashMap的结构，即内部拥有一个Entry数组，数组中的每个元素又是一个链表,同时又是一个ReentrantLock（Segment继承了ReentrantLock）。
+
+**2.内部结构**
+
+ConcurrentHashMap使用分段锁技术，将数据分成一段一段的存储，然后给每一段数据配一把锁，当一个线程占用锁访问其中一个段数据的时候，其他段的数据也能被其他线程访问，能够实现真正的并发访问。如下图是ConcurrentHashMap的内部结构图：
+
+[![彻底搞清楚ConcurrentHashMap的实现原理(含JDK1.7和JDK1.8的区别)](https://youzhixueyuan.com/blog/wp-content/uploads/2018/11/2020050202270792.png)](https://youzhixueyuan.com/blog/wp-content/uploads/2018/11/2020050202270792.png)
+
+面的结构我们可以了解到，ConcurrentHashMap定位一个元素的过程需要进行两次Hash操作。
+
+**第一次Hash定位到Segment，第二次Hash定位到元素所在的链表的头部。**
+
+**3.该结构的优劣势**
+
+**坏处**
+
+这一种结构的带来的副作用是Hash的过程要比普通的HashMap要长
+
+**好处**
+
+写操作的时候可以只对元素所在的Segment进行加锁即可，不会影响到其他的Segment，这样，在最理想的情况下，ConcurrentHashMap可以最高同时支持Segment数量大小的写操作（刚好这些写操作都非常平均地分布在所有的Segment上）。
+
+所以，通过这一种结构，ConcurrentHashMap的并发能力可以大大的提高。
+
+
+
+内部使用分区Segment来表示不同的部分, 每个分区其实就是一个小的hashtable. 各自有自己的锁。
+
+只要多个修改发生在不同的分区, 他们就可以并发的进行. 把一个整体分成了16个Segment, 最高支持16个线程并发修改。
+
+代码中运用了很多volatile声明共享变量, 第一时间获取修改的内容, 性能较好。
+
+
+
+**JDK-1.8版本：**
+
+JDK1.8采用了**数组+链表+红黑树**的实现方式。
+
+[![彻底搞清楚ConcurrentHashMap的实现原理(含JDK1.7和JDK1.8的区别)](https://youzhixueyuan.com/blog/wp-content/uploads/2018/11/2020050202351287.png)](https://youzhixueyuan.com/blog/wp-content/uploads/2018/11/2020050202351287.png)
+
+**内部大量采用CAS操作，这里我简要介绍下CAS。**
+
+CAS是compare and  swap的缩写，即我们所说的比较交换。cas是一种基于锁的操作，而且是乐观锁。在java中锁分为乐观锁和悲观锁。悲观锁是将资源锁住，等一个之前获得锁的线程释放锁之后，下一个线程才可以访问。而乐观锁采取了一种宽泛的态度，通过某种方式不加锁来处理资源，比如通过给记录加version来获取数据，性能较悲观锁有很大的提高。
+
+CAS 操作包含三个操作数 ——  内存位置（V）、预期原值（A）和新值(B)。如果内存地址里面的值和A的值是一样的，那么就将内存里面的值更新成B。CAS是通过无限循环来获取数据的，若果在第一轮循环中，a线程获取地址里面的值被b线程修改了，那么a线程需要自旋，到下次循环才有可能机会执行。
+
+**JDK8中彻底放弃了Segment转而采用的是Node，其设计思想也不再是JDK1.7中的分段锁思想。**
+
+**Node：保存key，value及key的hash值的数据结构。其中value和next都用volatile修饰，保证并发的可见性。**
+
+```java
+    /**
+     * Key-value entry.  This class is never exported out as a
+     * user-mutable Map.Entry (i.e., one supporting setValue; see
+     * MapEntry below), but can be used for read-only traversals used
+     * in bulk tasks.  Subclasses of Node with a negative hash field
+     * are special, and contain null keys and values (but are never
+     * exported).  Otherwise, keys and vals are never null.
+     */
+    static class Node<K,V> implements Map.Entry<K,V> {
+        final int hash;
+        final K key;
+        volatile V val;
+        volatile Node<K,V> next;
+	//省略部分代码...
+    }
+```
+
+**Java8 ConcurrentHashMap结构基本上和Java8的HashMap一样，不过保证线程安全性。**
+
+在JDK8中ConcurrentHashMap的结构，由于引入了红黑树，使得ConcurrentHashMap的实现非常复杂，我们都知道，红黑树是一种性能非常好的二叉查找树，其查找性能为O（logN），但是其实现过程也非常复杂，而且可读性也非常差，Doug Lea的思维能力确实不是一般人能比的，早期完全采用链表结构时Map的查找时间复杂度为O（N），JDK8中ConcurrentHashMap在链表的长度大于某个阈值的时候会将链表转换成红黑树进一步提高其查找性能。
+
+![彻底搞清楚ConcurrentHashMap的实现原理(含JDK1.7和JDK1.8的区别)](https://youzhixueyuan.com/blog/wp-content/uploads/2019/07/20190730164533_34126.jpg)
+
+
 
 **部分字段：**
 
@@ -2718,6 +2926,316 @@ private transient Collection<V> values;
     }
 ```
 
+###### **ConcurrentHashMap与HashMap初始化比较**
+
+HashMap的resize（）方法，在初始化或者调整数组大小时，并没有考虑线程安全的问题。
+
+```java
+final Node<K,V>[] resize() {
+        Node<K,V>[] oldTab = table;
+        int oldCap = (oldTab == null) ? 0 : oldTab.length;
+        int oldThr = threshold;
+        int newCap, newThr = 0;
+        if (oldCap > 0) {
+            if (oldCap >= MAXIMUM_CAPACITY) {
+                threshold = Integer.MAX_VALUE;
+                return oldTab;
+            }
+            else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY &&
+                     oldCap >= DEFAULT_INITIAL_CAPACITY)
+                newThr = oldThr << 1; // double threshold
+        }
+        else if (oldThr > 0) // initial capacity was placed in threshold
+            newCap = oldThr;
+        else {               // zero initial threshold signifies using defaults
+            newCap = DEFAULT_INITIAL_CAPACITY;
+            newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
+        }
+        if (newThr == 0) {
+            float ft = (float)newCap * loadFactor;
+            newThr = (newCap < MAXIMUM_CAPACITY && ft < (float)MAXIMUM_CAPACITY ?
+                      (int)ft : Integer.MAX_VALUE);
+        }
+        threshold = newThr;
+        @SuppressWarnings({"rawtypes","unchecked"})
+        Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap];
+        table = newTab;
+        if (oldTab != null) {
+            for (int j = 0; j < oldCap; ++j) {
+                Node<K,V> e;
+                if ((e = oldTab[j]) != null) {
+                    oldTab[j] = null;
+                    if (e.next == null)
+                        newTab[e.hash & (newCap - 1)] = e;
+                    else if (e instanceof TreeNode)
+                        ((TreeNode<K,V>)e).split(this, newTab, j, oldCap);
+                    else { // preserve order
+                        Node<K,V> loHead = null, loTail = null;
+                        Node<K,V> hiHead = null, hiTail = null;
+                        Node<K,V> next;
+                        do {
+                            next = e.next;
+                            if ((e.hash & oldCap) == 0) {
+                                if (loTail == null)
+                                    loHead = e;
+                                else
+                                    loTail.next = e;
+                                loTail = e;
+                            }
+                            else {
+                                if (hiTail == null)
+                                    hiHead = e;
+                                else
+                                    hiTail.next = e;
+                                hiTail = e;
+                            }
+                        } while ((e = next) != null);
+                        if (loTail != null) {
+                            loTail.next = null;
+                            newTab[j] = loHead;
+                        }
+                        if (hiTail != null) {
+                            hiTail.next = null;
+                            newTab[j + oldCap] = hiHead;
+                        }
+                    }
+                }
+            }
+        }
+        return newTab;
+    }
+```
+
+ConcurrentHashMap在初始化时，会进行table数组的非空判断，如果没有值则进行下面初始化的步骤。在while循环里面围绕着sizeCtl变量调整table数组的大小或初始化。使用CAS操作保证第一个进入的线程完成初始化，其他线程则退出初始化方法。
+
+```java
+    private final Node<K,V>[] initTable() {
+        Node<K,V>[] tab; int sc;
+        while ((tab = table) == null || tab.length == 0) {
+            if ((sc = sizeCtl) < 0)
+                Thread.yield(); // lost initialization race; just spin
+            else if (U.compareAndSwapInt(this, SIZECTL, sc, -1)) {
+                try {
+                    if ((tab = table) == null || tab.length == 0) {
+                        int n = (sc > 0) ? sc : DEFAULT_CAPACITY;
+                        @SuppressWarnings("unchecked")
+                        Node<K,V>[] nt = (Node<K,V>[])new Node<?,?>[n];
+                        table = tab = nt;
+                        sc = n - (n >>> 2);
+                    }
+                } finally {
+                    sizeCtl = sc;
+                }
+                break;
+            }
+        }
+        return tab;
+    }
+```
+
+###### **ConcurrentHashMap与HashMap添加元时比较**
+
+HashMap添加元素时，判断节点是否为空，若空则添加元素，非空则在链表后插入元素。该方法如果在多线程同时进入的情况下，就会出现数据存储问题。
+
+```java
+    final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
+                   boolean evict) {
+        Node<K,V>[] tab; Node<K,V> p; int n, i;
+        if ((tab = table) == null || (n = tab.length) == 0)
+            n = (tab = resize()).length;
+        if ((p = tab[i = (n - 1) & hash]) == null)
+            tab[i] = newNode(hash, key, value, null);
+        else {
+            Node<K,V> e; K k;
+            if (p.hash == hash &&
+                ((k = p.key) == key || (key != null && key.equals(k))))
+                e = p;
+            else if (p instanceof TreeNode)
+                e = ((TreeNode<K,V>)p).putTreeVal(this, tab, hash, key, value);
+            else {
+                for (int binCount = 0; ; ++binCount) {
+                    if ((e = p.next) == null) {
+                        p.next = newNode(hash, key, value, null);
+                        if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st
+                            treeifyBin(tab, hash);
+                        break;
+                    }
+                    if (e.hash == hash &&
+                        ((k = e.key) == key || (key != null && key.equals(k))))
+                        break;
+                    p = e;
+                }
+            }
+            if (e != null) { // existing mapping for key
+                V oldValue = e.value;
+                if (!onlyIfAbsent || oldValue == null)
+                    e.value = value;
+                afterNodeAccess(e);
+                return oldValue;
+            }
+        }
+        ++modCount;
+        if (++size > threshold)
+            resize();
+        afterNodeInsertion(evict);
+        return null;
+    }
+```
+
+ConcurrentHashMap在添加元素时，判断如果table中对应的位置为null，则使用casTabAt方法进行CAS操作将元素节点添加到table中。 而如果对应位置不为null，则使用synchronized代码块的形式同步添加元素节点。
+
+synchronized 里的 f 代表的就是当前节点，所以这个synchronized 只是对当前节点加了锁。这就是ConcurrentHashMao在处理在对同一个数组中的元素操作时对线程安全问题的处理。
+
+```java
+    final V putVal(K key, V value, boolean onlyIfAbsent) {
+        if (key == null || value == null) throw new NullPointerException();
+        int hash = spread(key.hashCode());
+        int binCount = 0;
+        for (Node<K,V>[] tab = table;;) {
+            Node<K,V> f; int n, i, fh;
+            if (tab == null || (n = tab.length) == 0)
+                tab = initTable();
+            else if ((f = tabAt(tab, i = (n - 1) & hash)) == null) {
+                if (casTabAt(tab, i, null,
+                             new Node<K,V>(hash, key, value, null)))
+                    break;                   // no lock when adding to empty bin
+            }
+            else if ((fh = f.hash) == MOVED)
+                tab = helpTransfer(tab, f);
+            else {
+                V oldVal = null;
+                synchronized (f) {
+                    if (tabAt(tab, i) == f) {
+                        if (fh >= 0) {
+                            binCount = 1;
+                            for (Node<K,V> e = f;; ++binCount) {
+                                K ek;
+                                if (e.hash == hash &&
+                                    ((ek = e.key) == key ||
+                                     (ek != null && key.equals(ek)))) {
+                                    oldVal = e.val;
+                                    if (!onlyIfAbsent)
+                                        e.val = value;
+                                    break;
+                                }
+                                Node<K,V> pred = e;
+                                if ((e = e.next) == null) {
+                                    pred.next = new Node<K,V>(hash, key,
+                                                              value, null);
+                                    break;
+                                }
+                            }
+                        }
+                        else if (f instanceof TreeBin) {
+                            Node<K,V> p;
+                            binCount = 2;
+                            if ((p = ((TreeBin<K,V>)f).putTreeVal(hash, key,
+                                                           value)) != null) {
+                                oldVal = p.val;
+                                if (!onlyIfAbsent)
+                                    p.val = value;
+                            }
+                        }
+                    }
+                }
+                if (binCount != 0) {
+                    if (binCount >= TREEIFY_THRESHOLD)
+                        treeifyBin(tab, i);
+                    if (oldVal != null)
+                        return oldVal;
+                    break;
+                }
+            }
+        }
+        addCount(1L, binCount);
+        return null;
+    }
+```
+
+###### **ConcurrentHashMap与HashMap在扩容时比较**
+
+HashMap在数组的元素过多时会进行扩容操作，扩容之后会把原数组中的元素拿到新的数组中，这时候在多线程情况下就有可能出现多个线程搬运一个元素。或者说一个线程正在进行扩容，但是另一个线程还想进来存或者读元素，这也可会出现线程安全问题。在ConcurrentHashMap中：
+
+```java
+/** Implementation for put and putIfAbsent */
+final V putVal(K key, V value, boolean onlyIfAbsent) {
+    if (key == null || value == null) throw new NullPointerException();
+    int hash = spread(key.hashCode());
+    int binCount = 0;
+    for (Node<K,V>[] tab = table;;) {
+        Node<K,V> f; int n, i, fh;
+        if (tab == null || (n = tab.length) == 0)
+           省略......
+        }
+        else if ((fh = f.hash) == MOVED)
+            tab = helpTransfer(tab, f);
+        else {
+            省略......
+    }
+    addCount(1L, binCount);
+    return null;
+}
+```
+
+我们看到 (fh = f.hash) == MOVED 有这样一个判断，MOVED  是一个成员静态变量，值为-1，当数组在扩容的时候会把数组的头节点的hash值变为-1，所以当线程进来不管是查询还是修改还是添加只要看到当前主节点的hash值为-1时就会进入这里面的方法。
+
+```java
+/**
+ * 如果当前节点正在重新分配元素，则帮助它
+ */
+final Node<K,V>[] helpTransfer(Node<K,V>[] tab, Node<K,V> f) {
+    Node<K,V>[] nextTab; int sc;
+    if (tab != null && (f instanceof ForwardingNode) &&
+        (nextTab = ((ForwardingNode<K,V>)f).nextTable) != null) {
+        int rs = resizeStamp(tab.length);
+        while (nextTab == nextTable && table == tab &&
+               (sc = sizeCtl) < 0) {
+            if ((sc >>> RESIZE_STAMP_SHIFT) != rs || sc == rs + 1 ||
+                sc == rs + MAX_RESIZERS || transferIndex <= 0)
+                break;
+            if (U.compareAndSwapInt(this, SIZECTL, sc, sc + 1)) {
+                transfer(tab, nextTab);
+                break;
+            }
+        }
+        return nextTab;
+    }
+    return table;
+}
+```
+
+
+
+###### 总结
+
+其实可以看出JDK1.8版本的ConcurrentHashMap的数据结构已经接近HashMap，相对而言，ConcurrentHashMap只是增加了同步的操作来控制并发，从JDK1.7版本的ReentrantLock+Segment+HashEntry，到JDK1.8版本中synchronized+CAS+HashEntry+红黑树。
+
+**1.数据结构**：取消了Segment分段锁的数据结构，取而代之的是数组+链表+红黑树的结构。
+
+**2.保证线程安全机制**：JDK1.7采用segment的分段锁机制实现线程安全，其中segment继承自ReentrantLock。JDK1.8采用CAS+Synchronized保证线程安全。
+
+ **3.锁的粒度**：原来是对需要进行数据操作的Segment加锁，现调整为对每个数组元素加锁（Node）。
+
+**4.链表转化为红黑树**:定位结点的hash算法简化会带来弊端,Hash冲突加剧,因此在链表节点数量大于8时，会将链表转化为红黑树进行存储。
+
+ **5.查询时间复杂度**：从原来的遍历链表O(n)，变成遍历红黑树O(logN)。
+
+
+
+#### 使用读写分离锁替代独占锁
+
+顾名思义, 用ReadWriteLock将读写的锁分离开来, 尤其在读多写少的场合, 可以有效提升系统的并发能力.
+
+- 读-读不互斥：读读之间不阻塞。
+- 读-写互斥：读阻塞写，写也会阻塞读。
+- 写-写互斥：写写阻塞。
+
+#### 锁分离
+
+
+
+#### 锁粗化
+
 
 
 ### 使用ThreadLocal
@@ -2747,4 +3265,9 @@ private transient Collection<V> values;
 [深入理解java内存模型]: https://www.jianshu.com/p/15106e9c4bf3
 
 [认真的讲一讲：自旋锁到底是什么]: https://www.jianshu.com/p/9d3660ad4358
+
+[深入理解Java中的逃逸分析]: https://blog.csdn.net/hollis_chuang/article/details/80922794
+[对象和数组并不是都在堆上分配内存的]: https://www.hollischuang.com/archives/2398
+
+[彻底搞清楚ConcurrentHashMap的实现原理]: https://youzhixueyuan.com/concurrenthashmap.html
 
