@@ -497,7 +497,46 @@ public synchronized static void fun() {
 
 作用于整个类。
 
+#### 具有可重入性
+
+​	若一个程序或子程序可以“在任意时刻被中断然后操作系统调度执行另外一段代码，这段代码又调用了该子程序不会出错”，则称其为可重入（reentrant或re-entrant）的。即当该子程序正在运行时，执行线程可以再次进入并执行它，仍然获得符合设计时预期的结果。与多线程并发执行的线程安全不同，可重入强调对单个线程执行时重新进入同一个子程序仍然是安全的。
+
+代码示例：
+
+```java
+
+public class Xttblog extends SuperXttblog {
+    public static void main(String[] args) {
+        Xttblog child = new Xttblog();
+        child.doSomething();
+    }
+ 
+    public synchronized void doSomething() {
+        System.out.println("child.doSomething()" + Thread.currentThread().getName());
+        doAnotherThing(); // 调用自己类中其他的synchronized方法
+    }
+ 
+    private synchronized void doAnotherThing() {
+        super.doSomething(); // 调用父类的synchronized方法
+        System.out.println("child.doAnotherThing()" + Thread.currentThread().getName());
+    }
+}
+ 
+class SuperXttblog {
+    public synchronized void doSomething() {
+        System.out.println("father.doSomething()" + Thread.currentThread().getName());
+    }
+}
+//child.doSomething()Thread-5492
+//father.doSomething()Thread-5492
+//child.doAnotherThing()Thread-5492
+```
+
+​	在同一个线程中，一个同步方法获取可重入锁后调用另一个同步方法时，如果该锁是同一个锁对象，则计数器+1，获取锁成功，直接执行同步方法。在释放可重入锁时，计数器-1，直到0则释放锁，其他线程才可以获取该锁对象。
+
 ### ReentrantLock
+
+可重入锁：当线程请求一个由其它线程持有的对象锁时，该线程会阻塞，而当线程请求由自己持有的对象锁时，如果该锁是重入锁，请求就会成功，否则阻塞。synchronized 也是可重入锁。
 
 ReentrantLock 是 java.util.concurrent（J.U.C）包中的锁。
 
@@ -3224,11 +3263,138 @@ final Node<K,V>[] helpTransfer(Node<K,V>[] tab, Node<K,V> f) {
 
 #### 使用读写分离锁替代独占锁
 
-顾名思义, 用ReadWriteLock将读写的锁分离开来, 尤其在读多写少的场合, 可以有效提升系统的并发能力.
+顾名思义, 用ReadWriteLock将读写的锁分离开来, 尤其在**读多写少**的场合, 可以有效提升系统的并发能力.
+
+ReadWriteLock是JDK5中提供的读写分离锁。读写分离锁可以有效地帮助减少锁竞争，以提升系统的性能。用锁分离的机制来提升性能非常容易理解，比如线程A1、A2、A3进行写操作，B1、B2、B3进行读操作，如果使用重入锁或者内部锁，则理论上说所有读之间，读与写之间、写与写之间都是串行操作。当B1进行读取时，B2、B3则需要等待锁。由于读操作并不会对数据的完整性造成破坏，这种等待显然是不合理的。因此，读写锁就有了发挥功能的余地。
+
+在这种情况下，读写锁允许多个线程同时读，使得B1、B2、B3之间真正的并行。但是考虑到数据的完整性，写写操作和读写操作之间依然是需要相互等待和持有锁的。总的来说读写锁的访问约束如下：
 
 - 读-读不互斥：读读之间不阻塞。
 - 读-写互斥：读阻塞写，写也会阻塞读。
 - 写-写互斥：写写阻塞。
+
+演示代码如下：
+
+```java
+public class ReadWriteLockExample {
+
+    private final static ReentrantReadWriteLock READ_WRITE_LOCK = new ReentrantReadWriteLock();
+
+    private final static Lock READ_LOCK = READ_WRITE_LOCK.readLock();
+    private final static Lock WRITE_LOCK = READ_WRITE_LOCK.writeLock();
+
+    private int value = 0;
+
+    public Object handleRead(Lock lock) throws InterruptedException {
+        try {
+            lock.lock();
+            Thread.sleep(1000);
+            System.out.println("reading value:" + value);
+            return value;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void handleWrite(Lock lock, int tmp) throws InterruptedException {
+        try {
+            lock.lock();
+            Thread.sleep(1000);
+            System.out.println("writing value:" + tmp);
+            value = tmp;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public static void main(String[] args) {
+        final ReadWriteLockExample rwl = new ReadWriteLockExample();
+        Thread readThread = new Thread(new Runnable() {
+
+            @Override
+            public void run() {
+                try {
+                    rwl.handleRead(READ_LOCK);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
+        Thread writeThread = new Thread(new Runnable() {
+
+            @Override
+            public void run() {
+                try {
+                    rwl.handleWrite(WRITE_LOCK, new Random().nextInt());
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
+        for (int i = 0; i < 2; i++) {
+            new Thread(writeThread).start();
+        }
+
+        for (int i = 0; i < 18; i++) {
+            new Thread(readThread).start();
+        }
+    }
+}
+```
+
+##### 读写分离锁ReentrantReadWriteLock详解
+
+###### 一、性质
+
+1. 可重入
+
+   ​	可重入就是同一个线程持有该锁时，可以重复加锁。每次加锁的时候count值加1，每次释放锁的时候count减1，直到count为0，其他的线程才可以再次获取。
+
+2. 读写分离
+
+   ​	在多个线程操作同一数据时，如果多个线程全是读操作，那么这个多线程即使不加锁也不会出现任何问题。但是多个线程对同一数据进行写操作，如果不加锁则可能导致数据不一致的问题。所以为了提高程序效率，把写数据操作和读数据操作分开，加上两把不同的锁，不仅保证数据正确性，还能提高效率。
+
+3. 支持可以锁降级
+
+   ​	线程获取写入锁后可以获取读取锁，然后释放写入锁，这样就从写入锁变成了读取锁，从而实现锁降级的特性。在释放写锁之前获取读锁是为了保证数据的可见性，因为如果获取读锁在释放写锁之后的话，写锁被其他线程获取，改写了数据，在当前线程获取读锁后读到数据则是修改后的数据。遵循锁降级的步骤，则会阻塞其他线程获取写锁，直到当前线程使用数据并释放读锁后，其他线程才能获取写锁进行数据操作。
+
+   ![img](https://pics5.baidu.com/feed/caef76094b36acafd16bfaad109d3f1500e99ca6.jpeg?token=508404373d6dae2420a3853483eca6c2&s=04B86832CE83F10106789CC10000E0B2)
+
+4. 不支持锁升级
+
+   ​	线程获取读锁是不能直接升级为写入锁的。需要释放所有读取锁，才可获取写锁。
+
+   ![img](https://pics2.baidu.com/feed/32fa828ba61ea8d37a664cddfb4e824b241f5868.jpeg?token=96aeba47bbee024ee573ee242e0d6db4&s=61BC387284B849804CD4D1DF000050B2)
+
+   **为什么不支持锁升级？**
+
+   ​	读写锁的特点是如果线程都申请读锁，是可以多个线程同时持有的，可是如果是写锁，只能有一个线程持有，并且不可能存在读锁（先）和写锁（后）同时持有的情况。
+
+   ​	正是因为不可能有读锁和写锁同时持有的情况，所以升级写锁的过程中，需要等到所有的读锁都释放，此时才能进行升级。
+
+   ​	假设有 A，B 和 C 三个线程，它们都已持有读锁。假设线程 A 尝试从读锁升级到写锁。那么它必须等待 B 和 C 释放掉已经获取到的读锁。如果随着时间推移，B 和 C 逐渐释放了它们的读锁，此时线程 A 确实是可以成功升级并获取写锁。
+
+   ​	但是我们考虑一种特殊情况。假设线程 A 和 B 都想升级到写锁，那么对于线程 A 而言，它需要等待其他所有线程，包括线程 B 在内释放读锁。而线程 B 也需要等待所有的线程，包括线程 A 释放读锁。这就是一种非常典型的死锁的情况。谁都愿不愿意率先释放掉自己手中的锁。（写-读互斥）
+
+    	但是读写锁的升级并不是不可能的，也有可以实现的方案，如果我们保证每次只有一个线程可以升级，那么就可以保证线程安全。只不过最常见的 ReentrantReadWriteLock 对此并不支持。
+
+   实例代码：：：
+
+###### 二、使用
+
+1. 基本使用
+
+   
+
+2. 锁升级
+
+   
+
+3. 其他方法
+
+
 
 #### 锁分离
 
@@ -3270,4 +3436,7 @@ final Node<K,V>[] helpTransfer(Node<K,V>[] tab, Node<K,V> f) {
 [对象和数组并不是都在堆上分配内存的]: https://www.hollischuang.com/archives/2398
 
 [彻底搞清楚ConcurrentHashMap的实现原理]: https://youzhixueyuan.com/concurrenthashmap.html
+
+[可重入读写锁ReentrantReadWriteLock的使用详解]: https://baijiahao.baidu.com/s?id=1649257642735492589&amp;wfr=spider&amp;for=pc
+[ReentrantReadWriteLock——读写锁如何升级，为何读写锁不能插队？]: https://blog.csdn.net/zhangkaixuan456/article/details/107019540/
 
