@@ -1116,7 +1116,7 @@ consume..10
 
 ###### **ArrayBlockingQueue**
 
-除了不需要集合作参数的构造函数，其他读写方法都使用ReentrantLock锁加锁。
+除了不需要集合作参数的构造函数，其他读写方法都使用ReentrantLock锁加锁。ArrayBlockingQueue所有操作公用一个ReentrantLock锁，使用两个condition对象判断队列是否为满队列或空队列。
 
 **enqueue（）方法：**插入元素在当前位置，前进，和信号。只在持有锁时调用。
 
@@ -1317,10 +1317,56 @@ public E poll() {
     }
 ```
 
-**ArrayBlockingQueue构造方法：**带参构造方法，可以直接将集合中的元素放入队列中。
+**ArrayBlockingQueue构造方法：**带集合参数的构造方法，可以直接将集合中的元素放入队列中。
 
-```
-    public ArrayBlockingQueue(int capacity, boolean fair,//fair标志是否开启公平锁
+```java
+/**
+     * Creates an {@code ArrayBlockingQueue} with the given (fixed)
+     * capacity and default access policy.
+     *
+     * @param capacity the capacity of this queue
+     * @throws IllegalArgumentException if {@code capacity < 1}
+     */
+    public ArrayBlockingQueue(int capacity) {
+        this(capacity, false);
+    }
+
+    /**
+     * Creates an {@code ArrayBlockingQueue} with the given (fixed)
+     * capacity and the specified access policy.
+     *
+     * @param capacity the capacity of this queue
+     * @param fair if {@code true} then queue accesses for threads blocked
+     *        on insertion or removal, are processed in FIFO order;
+     *        if {@code false} the access order is unspecified.
+     * @throws IllegalArgumentException if {@code capacity < 1}
+     */
+    public ArrayBlockingQueue(int capacity, boolean fair) {
+        if (capacity <= 0)
+            throw new IllegalArgumentException();
+        this.items = new Object[capacity];
+        lock = new ReentrantLock(fair);
+        notEmpty = lock.newCondition();
+        notFull =  lock.newCondition();
+    }
+
+    /**
+     * Creates an {@code ArrayBlockingQueue} with the given (fixed)
+     * capacity, the specified access policy and initially containing the
+     * elements of the given collection,
+     * added in traversal order of the collection's iterator.
+     *
+     * @param capacity the capacity of this queue
+     * @param fair if {@code true} then queue accesses for threads blocked
+     *        on insertion or removal, are processed in FIFO order;
+     *        if {@code false} the access order is unspecified.
+     * @param c the collection of elements to initially contain
+     * @throws IllegalArgumentException if {@code capacity} is less than
+     *         {@code c.size()}, or less than 1.
+     * @throws NullPointerException if the specified collection or any
+     *         of its elements are null
+     */
+    public ArrayBlockingQueue(int capacity, boolean fair,
                               Collection<? extends E> c) {
         this(capacity, fair);
 
@@ -1342,9 +1388,12 @@ public E poll() {
             lock.unlock();
         }
     }
+
 ```
 
+###### LinkedBlockingQueue
 
+##### 暂置-------------------------
 
 #### ForkJoin
 
@@ -3356,6 +3405,8 @@ public class ReadWriteLockExample {
 
    ​	在多个线程操作同一数据时，如果多个线程全是读操作，那么这个多线程即使不加锁也不会出现任何问题。但是多个线程对同一数据进行写操作，如果不加锁则可能导致数据不一致的问题。所以为了提高程序效率，把写数据操作和读数据操作分开，加上两把不同的锁，不仅保证数据正确性，还能提高效率。
 
+   ​	**读锁是多线程共享，写锁是单线程独占的。**
+
 3. 支持可以锁降级
 
    ​	线程获取写入锁后可以获取读取锁，然后释放写入锁，这样就从写入锁变成了读取锁，从而实现锁降级的特性。在释放写锁之前获取读锁是为了保证数据的可见性，因为如果获取读锁在释放写锁之后的话，写锁被其他线程获取，改写了数据，在当前线程获取读锁后读到数据则是修改后的数据。遵循锁降级的步骤，则会阻塞其他线程获取写锁，直到当前线程使用数据并释放读锁后，其他线程才能获取写锁进行数据操作。
@@ -3370,9 +3421,9 @@ public class ReadWriteLockExample {
 
    **为什么不支持锁升级？**
 
-   ​	读写锁的特点是如果线程都申请读锁，是可以多个线程同时持有的，可是如果是写锁，只能有一个线程持有，并且不可能存在读锁（先）和写锁（后）同时持有的情况。
+   ​	读写锁的特点是如果线程都**申请读锁，是可以多个线程同时持有的，可是如果是写锁，只能有一个线程持有**，并且不可能存在读锁（先）和写锁（后）同时持有的情况。
 
-   ​	正是因为不可能有读锁和写锁同时持有的情况，所以升级写锁的过程中，需要等到所有的读锁都释放，此时才能进行升级。
+   ​	正是因为不可能有读锁和写锁同时持有的情况，所以**升级写锁的过程中，需要等到所有的读锁都释放，此时才能进行升级。**
 
    ​	假设有 A，B 和 C 三个线程，它们都已持有读锁。假设线程 A 尝试从读锁升级到写锁。那么它必须等待 B 和 C 释放掉已经获取到的读锁。如果随着时间推移，B 和 C 逐渐释放了它们的读锁，此时线程 A 确实是可以成功升级并获取写锁。
 
@@ -3380,25 +3431,178 @@ public class ReadWriteLockExample {
 
     	但是读写锁的升级并不是不可能的，也有可以实现的方案，如果我们保证每次只有一个线程可以升级，那么就可以保证线程安全。只不过最常见的 ReentrantReadWriteLock 对此并不支持。
 
-   实例代码：：：
+   实例代码：
+   
+   ```java
+   public class ReadWriteLockExample {
+   
+       private final static ReentrantReadWriteLock READ_WRITE_LOCK = new ReentrantReadWriteLock();
+   
+       private final static Lock READ_LOCK = READ_WRITE_LOCK.readLock();
+       private final static Lock WRITE_LOCK = READ_WRITE_LOCK.writeLock();
+   
+       private int value = 0;
+   
+       public Object handleRead(Lock lock) throws InterruptedException {
+           try {
+               lock.lock();
+               System.out.println(
+                       "after readLock" + Thread.currentThread().getName() + "  time:" + System.currentTimeMillis());
+               Thread.sleep(1000);
+               return value;
+           } finally {
+               lock.unlock();
+               System.out.println("readLock unlock" + Thread.currentThread().getName());
+           }
+       }
+   
+       public void handleWrite(Lock lock, int tmp) throws InterruptedException {
+           try {
+               lock.lock();
+               System.out.println("writeLock time :" + System.currentTimeMillis());
+               Thread.sleep(1000);
+               System.out.println("writing value:" + tmp);
+               value = tmp;
+           } finally {
+               lock.unlock();
+           }
+       }
+   
+       public static void main(String[] args) {
+           final ReadWriteLockExample rwl = new ReadWriteLockExample();
+           Thread readThread = new Thread(new Runnable() {
+   
+               @Override
+               public void run() {
+                   try {
+                       rwl.handleRead(READ_LOCK);
+                   } catch (InterruptedException e) {
+                       e.printStackTrace();
+                   }
+               }
+           });
+   
+           Thread writeThread = new Thread(new Runnable() {
+   
+               @Override
+               public void run() {
+                   try {
+                       rwl.handleWrite(WRITE_LOCK, new Random().nextInt());
+                   } catch (InterruptedException e) {
+                       e.printStackTrace();
+                   }
+               }
+           });
+   
+           for (int i = 0; i < 2; i++) {
+               new Thread(writeThread).start();
+           }
+   
+           for (int i = 0; i < 10; i++) {
+               new Thread(readThread).start();
+           }
+       }
+   }
+   //writeLock time :1593568790864
+   //writing value:-1608193388
+   //after readLockThread-4  time:1593568791917
+   //after readLockThread-6  time:1593568791920
+   //.....
+   //readLock unlockThread-4
+   //readLock unlockThread-6
+   //.....
+   //writeLock time :1593568792938
+   //writing value:-1524927570
+   //after readLockThread-5  time:1593568793939
+   //after readLockThread-7  time:1593568793940
+   //.....
+   //readLock unlockThread-5
+   //readLock unlockThread-7
+   //.....
+   ```
+   
+   第二个写锁在获取时，需要等待已获取读锁的线程释放读锁才能获取写锁。
 
 ###### 二、使用
 
 1. 基本使用
 
-   
+   写方法和读方法分别使用写锁和写锁。
+
+   使用ReentrantReadWriteLock类实例化一个可重入锁对象，使用readLock和writeLock方法获取读写锁对象。读锁类和写锁类是ReentrantReadWriteLock类的静态内部类，读锁获取锁对象是共享锁，写锁获取锁对象是独占锁。
+
+   ReentrantReadWriteLock需要注意的是在加锁后需要手动释放锁。
 
 2. 锁升级
 
-   
+   读锁在获取写锁之前必须先释放读锁，这种设计可以实现在多线程情况下也可以锁升级。
+
+   ```java
+   public class CachedData {
+    
+       Object data;
+       volatile boolean cacheValid;
+       final ReentrantReadWriteLock rwl = new ReentrantReadWriteLock();
+    
+       void processCachedData() {
+           rwl.readLock().lock();
+           if (!cacheValid) {
+               //在获取写锁之前，必须首先释放读锁。
+               rwl.readLock().unlock();
+               rwl.writeLock().lock();
+               try {
+                   //这里需要再次判断数据的有效性,因为在我们释放读锁和获取写锁的空隙之内，可能有其他线程修改了数据。
+                   if (!cacheValid) {
+                       data = new Object();
+                       cacheValid = true;
+                   }
+                   //在不释放写锁的情况下，直接获取读锁，这就是读写锁的降级。
+                   rwl.readLock().lock();
+               } finally {
+                   //释放了写锁，但是依然持有读锁
+                   rwl.writeLock().unlock();
+               }
+           }
+    
+           try {
+               System.out.println(data);
+           } finally {
+               //释放读锁
+               rwl.readLock().unlock();
+           }
+       }
+   }
+   ```
 
 3. 其他方法
 
-
+    暂置，源码研究其他方法，读写锁源码与ReentrantLock类似，特性相近。
 
 #### 锁分离
 
+在读写锁的思想上做进一步的延伸, 根据不同的功能拆分不同的锁, 进行有效的锁分离。
 
+一个典型的示例便是LinkedBlockingQueue,在它内部, take和put操作本身是隔离的，
+
+有若干个元素的时候, 一个在queue的头部操作, 一个在queue的尾部操作, 因此分别持有一把独立的锁。
+
+[![img](https://images2018.cnblogs.com/blog/1285727/201806/1285727-20180613070619982-1230258202.png)](https://images2018.cnblogs.com/blog/1285727/201806/1285727-20180613070619982-1230258202.png)
+
+```java
+/** Lock held by take, poll, etc */
+    private final ReentrantLock takeLock = new ReentrantLock();
+
+    /** Wait queue for waiting takes */
+    private final Condition notEmpty = takeLock.newCondition();
+
+    /** Lock held by put, offer, etc */
+    private final ReentrantLock putLock = new ReentrantLock();
+
+    /** Wait queue for waiting puts */
+    private final Condition notFull = putLock.newCondition();
+```
+
+LinkedBlockingQueue详解见第七章 J.U.C中的源码分析。
 
 #### 锁粗化
 
@@ -3406,11 +3610,149 @@ public class ReadWriteLockExample {
 
 ### 使用ThreadLocal
 
+#### 使用示例
 
+除了控制有限资源访问外, 我们还可以增加资源来保证对象线程安全.
+
+对于一些线程不安全的对象, 例如SimpleDateFormat, 与其加锁让100个线程来竞争获取, 
+
+不如准备100个SimpleDateFormat, 每个线程各自为营, 很快的完成format工作.
+
+```java
+public class ThreadLocalDemo {
+
+    public static ThreadLocal<SimpleDateFormat> threadLocal = new ThreadLocal();
+
+    public static void main(String[] args){
+        ExecutorService service = Executors.newFixedThreadPool(10);
+        for (int i = 0; i < 100; i++) {
+            service.submit(new Runnable() {
+                @Override
+                public void run() {
+                    if (threadLocal.get() == null) {
+                        threadLocal.set(new SimpleDateFormat("yyyy-MM-dd"));
+                    }
+
+                    System.out.println(threadLocal.get().format(new Date()));
+                }
+            });
+        }
+    }
+}
+```
+
+#### 原理
+
+关于ThreadLocal中set（value）方法，先获取当前线程对象，然后根据该线程对象获取当前线程的ThreadLocalMap对象，如果map非空则根据ThreadLocal-value键值对存放数据。
+
+```java
+    public void set(T value) {
+        Thread t = Thread.currentThread();
+        ThreadLocalMap map = getMap(t);
+        if (map != null)
+            map.set(this, value);
+        else
+            createMap(t, value);
+    }
+```
+
+关于ThreadLocal的get（）方法，同样根据当前线程对象获取ThreadLocalMap对象。判断map是否为空，若为空则初始化；若不为空，则判断该ThreadLocal对象在map中是否有值，若没有值则初始化，若有值则返回该值。
+
+```java
+	public T get() {
+        Thread t = Thread.currentThread();
+        ThreadLocalMap map = getMap(t);
+        if (map != null) {
+            ThreadLocalMap.Entry e = map.getEntry(this);
+            if (e != null) {
+                @SuppressWarnings("unchecked")
+                T result = (T)e.value;
+                return result;
+            }
+        }
+        return setInitialValue();
+    }
+```
+
+
+
+#### 内存释放
+
+- 手动释放: 调用threadlocal.set(null)或者threadlocal.remove()即可
+- 自动释放: 关闭线程池, 线程结束后, 自动释放threadlocalmap.
+
+```java
+ 1 public class StaticThreadLocalTest {
+ 2 
+ 3     private static ThreadLocal tt = new ThreadLocal();
+ 4     public static void main(String[] args) throws InterruptedException {
+ 5         ExecutorService service = Executors.newFixedThreadPool(1);
+ 6         for (int i = 0; i < 3; i++) {
+ 7             service.submit(new Runnable() {
+ 8                 @Override
+ 9                 public void run() {
+10                     BigMemoryObject oo = new BigMemoryObject();
+11                     tt.set(oo);
+12                     // 做些其他事情
+13                     // 释放方式一: 手动置null
+14 //                    tt.set(null);
+15                     // 释放方式二: 手动remove
+16 //                    tt.remove();
+17                 }
+18             });
+19         }
+24         // 释放方式三: 关闭线程或者线程池
+25         // 直接new Thread().start()的场景, 会在run结束后自动销毁线程
+26 //        service.shutdown();
+27 
+28         while (true) {
+29             Thread.sleep(24 * 3600 * 1000);
+30         }
+31     }
+32 
+33 }
+34 // 构建一个大内存对象, 便于观察内存波动.
+35 class BigMemoryObject{
+36 
+37     List<Integer> list = new ArrayList<>();
+38 
+39     BigMemoryObject() {
+40         for (int i = 0; i < 10000000; i++) {
+41             list.add(i);
+42         }
+43     }
+44 }
+```
+
+
+
+#### 内存泄露
+
+内存泄露主要出现在无法关闭的线程中， 例如web容器提供的并发线程池， 线程都是复用的。
+
+由于ThreadLocalMap生命周期和线程生命周期一样长。对于一些被强引用持有的ThreadLocal， 如定义为static。
+
+如果在使用结束后， 没有手动释放ThreadLocal，由于线程会被重复使用， 那么会出现之前的线程对象残留问题，造成内存泄露， 甚至业务逻辑紊乱。
+
+对于没有强引用持有的ThreadLocal, 如方法内变量，是不是就万事大吉了呢？答案是否定的。
+
+虽然ThreadLocalMap会在get和set等操作里删除key 为 null的对象，但是这个方法并不是100%会执行到。
+
+看ThreadLocalMap源码即可发现， 只有调用了getEntryAfterMiss后才会执行清除操作，如果后续线程没满足条件或者都没执行get set操作，那么依然存在内存残留问题。
+
+不管threadlocal是static还是非static的，都要像加锁解锁一样， 每次用完后， 手动清理，释放对象。
 
 ### 使用无锁操作
 
+与锁相比, 使用CAS操作, 由于其非阻塞性, 因此不存在死锁问题, 同时线程之间的相互影响, 
 
+也远小于锁的方式. 使用无锁的方案, 可以减少锁竞争以及线程频繁调度带来的系统开销.
+
+> 例如生产消费者模型中, 可以使用BlockingQueue来作为内存缓冲区, 但他是基于锁和阻塞实现的线程同步.
+>
+> 如果想要在高并发场合下获取更好的性能, 则可以使用基于CAS的ConcurrentLinkedQueue. 
+>
+> 同理, 如果可以使用CAS方式实现整个生产消费者模型, 那么也将获得可观的性能提升, 如Disruptor框架.
 
 ## 十二、多线程开发的良好习惯
 
