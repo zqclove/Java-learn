@@ -100,6 +100,8 @@ public boolean equals(Object obj) {
 
 ##### numberOfLeadingZeros(int i)
 
+
+
 ##### reverseBytes(int i)
 
 
@@ -247,6 +249,18 @@ public boolean equals(Object anObject) {
 **栈区存引用和基本类型，不能存对象，而堆区存对象。==是比较地址，equals()比较对象内容。**
 
 (1) **String str1 = "abcd"的实现过程**：首先栈区创建str引用，**然后在String池（独立于栈和堆而存在，存储不可变量）中寻找其指向的内容为"abcd"的对象，如果String池中没有，则创建一个，然后str指向String池中的对象，如果有，则直接将str1指向"abcd""；**如果后来又定义了字符串变量 str2 =  "abcd",则直接将str2引用指向String池中已经存在的“abcd”，不再重新创建对象；当str1进行了赋值（str1=“abc”），则str1将不再指向"abcd"，而是重新指String池中的"abc"，此时如果定义String str3 = "abc",进行str1 ==  str3操作，返回值为true，因为他们的值一样，地址一样，但是如果内容为"abc"的str1进行了字符串的+连接str1 =  str1+"d"；此时str1指向的是在堆中新建的内容为"abcd"的对象，即此时进行str1==str2，返回值false，因为地址不一样。
+
+```java
+        String st1 = "abcd";
+        String st2 = "abcd";
+        System.out.println(st1 == st2); // true
+        st1 = "abc";
+        String st3 = "abc";
+        System.out.println(st1 == st3); // true
+        st1 = st1 + "d"; 
+        System.out.println(st1 == st2); // false
+        System.out.println(st1.equals(st2)); // true
+```
 
 (2) **String str3 = new String("abcd")的实现过程：直接在堆中创建对象**。如果后来又有String str4 = new  String("abcd")，str4不会指向之前的对象，而是重新创建一个对象并指向它，所以如果此时进行str3==str4返回值是false，因为两个对象的地址不一样，如果是str3.equals(str4)，返回true,因为内容相同。
 
@@ -611,6 +625,14 @@ public String(String original) {
 }
 ```
 
+在Java8虚拟规范中：Java语言规定，相同的字符串常量（也就是包含同一份码点序列的常量）必须指向同一个String类实例。此外，如果在任意字符串上调用String.intern方法，那么其返回结果所指向的那个类实例，必须和直接以常量形式的字符串实例完全相同。
+
+```java
+System.out.println(("a" + "b" + "c").intern() == "abc"); // true
+```
+
+注意：当有两个字符串s和t，当且仅当 s.equals（t）为true时，s.inter（）== t 才为true。
+
 ## 三、运算
 
 ### 参数传递
@@ -844,7 +866,7 @@ public class A {
         A a2 = new A();
     }
 }
-123
+//123
 ```
 
 #### **4. 静态内部类**
