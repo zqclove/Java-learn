@@ -1,3 +1,7 @@
+[TOC]
+
+
+
 ## Java容器
 
 ## 一、概览
@@ -1180,3 +1184,132 @@ List list = Arrays.asList(1, 2, 3);
 
 ### LinkedList专题
 
+**extends** AbstractSequentialList<E>
+
+**implements** List<E>, Deque<E>, Cloneable, java.io.Serializable
+
+#### 重要字段
+
+```java
+    /* 链表长度 */
+	transient int size = 0;
+
+    /**
+     * Pointer to first node.
+     * Invariant: (first == null && last == null) ||
+     *            (first.prev == null && first.item != null)
+     */
+    transient Node<E> first;
+
+    /**
+     * Pointer to last node.
+     * Invariant: (first == null && last == null) ||
+     *            (last.next == null && last.item != null)
+     */
+    transient Node<E> last;
+```
+
+#### 存储结构
+
+基于**双向链表**实现，使用 Node 存储链表节点信息。
+
+```java
+private static class Node<E> {
+    E item;
+    Node<E> next;
+    Node<E> prev;
+}
+```
+
+#### 重要方法
+
+##### 添加
+
+```java
+    /* 在表头添加元素 */
+    public void addFirst(E e) {
+        linkFirst(e);
+    }
+
+    public boolean add(E e) {
+        linkLast(e);
+        return true;
+    }
+
+	/* 直接将first的prev值赋值为新节点，空链则直接将新节点赋值给last */
+    private void linkFirst(E e) {
+        final Node<E> f = first;
+        final Node<E> newNode = new Node<>(null, e, f);
+        first = newNode;
+        if (f == null)
+            last = newNode;
+        else
+            f.prev = newNode;
+        size++;
+        modCount++;
+    }
+
+    /* 在表尾添加元素 */
+    public void addLast(E e) {
+        linkLast(e);
+    }
+
+	/* 与头插法相反 */
+    void linkLast(E e) {
+        final Node<E> l = last;
+        final Node<E> newNode = new Node<>(l, e, null);
+        last = newNode;
+        if (l == null)
+            first = newNode;
+        else
+            l.next = newNode;
+        size++;
+        modCount++;
+    }
+
+    public boolean addAll(int index, Collection<? extends E> c) {
+        checkPositionIndex(index);
+
+        Object[] a = c.toArray();
+        int numNew = a.length;
+        if (numNew == 0)
+            return false;
+
+        Node<E> pred, succ;
+        if (index == size) {
+            succ = null;
+            pred = last;
+        } else {
+            succ = node(index);
+            pred = succ.prev;
+        }
+
+        for (Object o : a) {
+            @SuppressWarnings("unchecked") E e = (E) o;
+            Node<E> newNode = new Node<>(pred, e, null);
+            if (pred == null)
+                first = newNode;
+            else
+                pred.next = newNode;
+            pred = newNode;
+        }
+
+        if (succ == null) {
+            last = pred;
+        } else {
+            pred.next = succ;
+            succ.prev = pred;
+        }
+
+        size += numNew;
+        modCount++;
+        return true;
+    }
+```
+
+### LinkedList 与 ArrayList 的比较
+
+ArrayList 基于动态数组实现，LinkedList 基于双向链表实现。ArrayList 和 LinkedList 的区别可以归结为数组和链表的区别：
+
+- 数组支持随机访问，但插入删除的代价很高，需要移动大量元素；
+- 链表不支持随机访问，但插入删除只需要改变指针。
