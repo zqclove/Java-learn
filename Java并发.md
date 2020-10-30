@@ -198,7 +198,6 @@ public void run() {
 - workQueue：在执行任务之前用于保存任务的队列。此队列将只保存由execute方法提交的可运行任务。
 - threadFactory：执行程序创建新线程时要使用的工厂。
 - handler：当执行因达到线程边界和队列容量而阻塞时使用的处理程序。
-- 
 
 当一个任务通过execute(Runnable)方法欲添加到线程池时：
 
