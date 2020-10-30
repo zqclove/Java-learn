@@ -2,9 +2,9 @@
 
 
 
-## Java基础
+# Java基础
 
-## 一、Integer
+# 一、Integer
 
 ### 方法解析
 
@@ -167,7 +167,7 @@ private static class IntegerCache {
     }
 ```
 
-## 二、String
+# 二、String
 
 ### 概述
 
@@ -633,7 +633,7 @@ System.out.println(("a" + "b" + "c").intern() == "abc"); // true
 
 注意：当有两个字符串s和t，当且仅当 s.equals（t）为true时，s.inter（）== t 才为true。
 
-## 三、运算
+# 三、运算
 
 ### 参数传递
 
@@ -771,7 +771,7 @@ switch 不支持 long，是因为 switch 的设计初衷是对那些只有少数
 // }
 ```
 
-## 四、关键字
+# 四、关键字
 
 ### final
 
@@ -933,7 +933,7 @@ public InitialOrderTest() {
 - 子类（实例变量、普通语句块）
 - 子类（构造函数）
 
-## 五、Object 通用方法
+# 五、Object 通用方法
 
 ### 概览
 
@@ -1484,9 +1484,9 @@ e1.set(2, 222);
 System.out.println(e2.get(2)); // 2
 ```
 
-## 六、继承
+# 六、继承
 
-#### 访问权限
+## 访问权限
 
 Java 中有三个访问权限修饰符：private、protected 以及 public，如果不加访问修饰符，表示包级可见。
 
@@ -1547,15 +1547,15 @@ public class AccessWithInnerClassExample {
 }
 ```
 
-##### 关于访问权限的小知识
+### 关于访问权限的小知识
 
 在Method类中，访问权限用整型表示：
 
 public=1    protected=4    default=0    private=2
 
-#### 抽象类与接口
+## 抽象类与接口
 
-##### 1. 抽象类
+### 1. 抽象类
 
 抽象类和抽象方法都使用 abstract 关键字进行声明。如果一个类中包含抽象方法，那么这个类必须声明为抽象类。
 
@@ -1595,7 +1595,7 @@ ac2.func1();
 
 
 
-##### 2. 接口
+### 2. 接口
 
 接口是抽象类的延伸，在 Java 8 之前，它可以看成是一个完全抽象的类，也就是说它不能有任何的方法实现。
 
@@ -1642,7 +1642,7 @@ System.out.println(InterfaceExample.x);
 
 
 
-##### 3. 比较
+### 3. 比较
 
 - 从设计层面上看，抽象类提供了一种 IS-A 关系，需要满足里式替换原则，即子类对象必须能够替换掉所有父类对象。而接口更像是一种 LIKE-A 关系，它只是提供一种方法实现契约，并不要求接口和实现接口的类具有 IS-A 关系。
 - 从使用上来看，一个类可以实现多个接口，但是不能继承多个抽象类。
@@ -1670,7 +1670,7 @@ System.out.println(InterfaceExample.x);
 
 
 
-#### super
+## super
 
 - 访问父类的构造函数：可以使用 super()  函数访问父类的构造函数，从而委托父类完成一些初始化的工作。应该注意到，子类一定会调用父类的构造函数来完成初始化工作，一般是调用父类的默认构造函数，如果子类需要调用父类其它构造函数，那么就可以使用 super() 函数。
 - 访问父类的成员：如果子类重写了父类的某个方法，可以通过使用 super 关键字来引用父类的方法实现。
@@ -1716,9 +1716,9 @@ SuperExtendExample.func()
 
 [Using the Keyword super](https://docs.oracle.com/javase/tutorial/java/IandI/super.html)
 
-#### 重写与重载
+## 重写与重载
 
-##### 1. 重写（Override）
+### 1. 重写（Override）
 
 存在于继承体系中，指子类实现了一个与父类在方法声明上完全相同的一个方法。
 
@@ -1818,13 +1818,13 @@ public static void main(String[] args) {
 }
 ```
 
-##### 2. 重载（Overload）
+### 2. 重载（Overload）
 
 存在于同一个类中，指一个方法与已经存在的方法名称上相同，但是参数类型、个数、顺序至少有一个不同。
 
 应该注意的是，返回值不同，其它都相同不算是重载。
 
-##### 遇到的问题
+### 遇到的问题
 
 子类能够重写父类的静态方法吗？（与jvm有关？类存放的内存区域与静态方法的内存区域不同？）
 
@@ -1834,7 +1834,7 @@ public static void main(String[] args) {
 
 
 
-## 七、反射
+# 七、反射
 
 每个类都有一个   **Class**   对象，包含了与类有关的信息。当编译一个新类时，会产生一个同名的 .class 文件，该文件内容保存着 Class 对象。
 
@@ -1848,13 +1848,13 @@ Class 和 java.lang.reflect 一起对反射提供了支持，java.lang.reflect �
 - **Method**  ：可以使用 invoke() 方法调用与 Method 对象关联的方法；
 - **Constructor**  ：可以用 Constructor 的 newInstance() 创建新的对象。
 
-### 反射的优点
+## 反射的优点
 
 - **可扩展性**：应用程序可以利用全限定名创建可扩展对象的实例，来使用来自外部的用户自定义类。
 - **类浏览器和可视化开发环境**：一个类浏览器需要可以枚举类的成员。可视化开发环境（如 IDE）可以从利用反射中可用的类型信息中受益，以帮助程序员编写正确的代码。
 - **调试器和测试工具**： 调试器需要能够检查一个类里的私有成员。测试工具可以利用反射来自动地调用类里定义的可被发现的 API 定义，以确保一组测试中有较高的代码覆盖率。
 
-### 反射的缺点
+## 反射的缺点
 
 尽管反射非常强大，但也不能滥用。如果一个功能可以不用反射完成，那么最好就不用。在我们使用反射技术时，下面几条内容应该牢记于心。
 
@@ -1865,7 +1865,7 @@ Class 和 java.lang.reflect 一起对反射提供了支持，java.lang.reflect �
 - [Trail: The Reflection API](https://docs.oracle.com/javase/tutorial/reflect/index.html)
 - [深入解析 Java 反射（1）- 基础](http://www.sczyh30.com/posts/Java/java-reflection-1/)
 
-### 深入解析
+## 深入解析
 
 Java 反射主要提供以下功能：
 
@@ -1876,7 +1876,7 @@ Java 反射主要提供以下功能：
 
 **重点是运行时而不是编译时**
 
-#### 反射的基本运用
+### 反射的基本运用
 
 获取class对象的方法有三种：
 
@@ -1904,7 +1904,7 @@ Java 反射主要提供以下功能：
    Class<?> klass = str.getClass();
    ```
 
-#### 利用反射创建数组
+### 利用反射创建数组
 
 数组在Java里是比较特殊的一种类型，它可以赋值给一个Object Reference。下面我们看一看利用反射创建数组的例子：
 
@@ -1964,7 +1964,7 @@ arrayOop Reflection::reflect_new_array(oop element_mirror, jint length, TRAPS) {
 
 另外，Array 类的 `set` 和 `get` 方法都为 native 方法，在 HotSpot JVM 里分别对应 `Reflection::array_set` 和 `Reflection::array_get` 方法，这里就不详细解析了。
 
-#### 解析invoke方法
+### 解析invoke方法
 
 invoke的实现：
 
@@ -1990,7 +1990,7 @@ public Object invoke(Object obj, Object... args)
 
 根据invoke方法的实现，可以将其分为以下几步：
 
-##### 1.权限检查
+#### 1.权限检查
 
 在invoke方法中首先判断AccessibleObject的override属性的值。AccessibleObject类是Field、Method和Constructor对象的基类。**它提供了将反射的对象标记为在使用时取消默认 Java 语言访问控制检查的能力**（猜测：反射能够使用私有权限的关键）。当Fields、Methods或Constructors用于设置或获取字段、调用方法或创建和初始化类的新实例时，将分别执行访问检查——针对public、default(包)访问、protected和private。
 
@@ -2137,7 +2137,7 @@ void slowCheckMemberAccess(Class<?> caller, Class<?> clazz, Object obj, int modi
 大体意思就是，用Reflection.ensureMemberAccess方法继续检查权限，若检查通过就更新缓存，这样下一次同一个类调用同一个方法时就不用执行权限检查了，这是一种简单的缓存机制。由于JMM的happens-before规则能够保证缓存初始化能够在写缓存之前发生，因此两个cache不需要声明为volatile。
 到这里，前期的权限检查工作就结束了。如果没有通过检查则会抛出异常，如果通过了检查则会到下一步。
 
-##### 2.调用MethodAccessor的invoke方法
+#### 2.调用MethodAccessor的invoke方法
 
 Method.invoke()实际上并不是自己实现的反射调用逻辑，而是委托给sun.reflect.MethodAccessor来处理。
 首先要了解Method对象的基本构成，每个Java方法有且只有一个Method对象作为root，它相当于根对象，对用户不可见。当我们创建Method对象时，我们代码中获得的Method对象都相当于它的副本（或引用）。root对象持有一个MethodAccessor对象，所以所有获取到的Method对象都共享这一个MethodAccessor对象，因此必须保证它在内存中的可见性。root对象其声明及注释为：
@@ -2396,25 +2396,215 @@ class NativeMethodAccessorImpl extends MethodAccessorImpl {
 
 ![](C:\Users\Administrator\Desktop\学习\java\反射之invoke解析.jpg)
 
-#### 反射的一些注意事项
+### 反射的一些注意事项
 
 由于反射会额外消耗一定的系统资源，因此如果不需要动态地创建一个对象，那么就不需要用反射。
 
 另外，反射调用方法时可以忽略权限检查，因此可能会破坏封装性而导致安全问题。
 
-## 八、异常
+# 八、异常
 
 Throwable 可以用来表示任何可以作为异常抛出的类，分为两种：  **Error**   和 **Exception**。其中 Error 用来表示 JVM 无法处理的错误，Exception 分为两种：
 
-- **受检异常**  ：需要用 try...catch... 语句捕获并进行处理，并且可以从异常中恢复；
-- **非受检异常**  ：是程序运行时错误，例如除 0 会引发 Arithmetic Exception，此时程序崩溃并且无法恢复。
+- **受检异常**  ：在正确的程序运行过程中，很容易出现的、可忍受的异常状况。在一定程度上这些异常可以被预测发生，需要用 try...catch... 语句捕获并进行处理（也可以使用 throws子句抛出），并且可以从异常中恢复。
+- **非受检异常**  ：包括 `RuntimeException`及其子类，例如除 0 会引发 Arithmetic Exception，此时程序崩溃并且无法恢复。
+
+非受检异常为编译器不要求强制处理的异常，受检异常是编译器要求必须处理的异常。
 
  [![img](https://camo.githubusercontent.com/106f71b4556e95b4a8508e82d9b6bec8ccb9e964/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f50506a77502e706e67)](https://camo.githubusercontent.com/106f71b4556e95b4a8508e82d9b6bec8ccb9e964/68747470733a2f2f63732d6e6f7465732d313235363130393739362e636f732e61702d6775616e677a686f752e6d7971636c6f75642e636f6d2f50506a77502e706e67) 
+
+## 参考资料
 
 - [Java 入门之异常处理](https://www.tianmaying.com/tutorial/Java-Exception)
 - [Java 异常的面试问题及答案 -Part 1](http://www.importnew.com/7383.html)
 
-## 九、泛型
+## 概念
+
+​	在 Java中，所有异常都可以用一个异常类表示，不同类型的异常对应不同的子类异常，定义各自的异常处理规范，在JDK1.4之后，添加了异常链机制，从而便于跟踪异常。
+
+​	Java异常是一个描述在代码段中发生异常的对象，当发生异常情况时，一个代表该异常的对象被创建并且在导致该异常的方法中被抛出，而该方法可以选择自己处理异常或者传递该异常。
+
+## 体系结构
+
+​	Java把异常当做对象处理，并定义了一个基类 Java.lang.Throwable作为所有异常类的超类。	
+
+​	在 Java API中已经定义了许多异常类，这些异常类分为两大类，错误**Error**和异常**Exception**。
+
+![异常体系](C:\Users\Administrator\Desktop\学习\java\Java-learn\异常体系.png)
+
+​	***上图并不包含 Java所有异常类***
+
+### Error
+
+​	Error属于 Java虚拟机的异常类，大多数错误与代码编写者所执行的操作无关，它表示不希望被程序捕获或者是程序无法处理的错误。
+
+​	Error类中典型的错误是`OutOfMemoryError`（OOM），虚拟机不再有程序执行所需的内存资源，是线程无法自身处理的错误，此时 JVM一般会终止线程的执行。还有发生在虚拟机试图执行程序应用时的错误，如类定义错误（NoClassDefFoundError）、链接错误（LinkageError）。**这些错误是不可检的**，因为它们在应用程序的控制和处理能力之外，而且绝大多数错误都是应用无法允许的情况。
+
+### Exception
+
+​	Exception分支中常见并重要的子类是`RuntimeException`（**运行时异常**），**该类型的异常是不检查异常**，程序可以选择捕获处理，也可选择不处理。这些异常通常是程序逻辑错误引起的，所以程序应当从**逻辑角度**避免这些异常。
+
+​	`RuntimeException`之外的异常统称为**非运行时异常**，类型上属于Exception及其子类，从程序**语法角度**必须处理的异常，如果不处理，编译将无法通过。常见的有 `IOException`、`SQLException`和用户自定义的异常。
+
+------
+
+> **Error和Exception的区别：**
+>
+> Error通常是灾难性错误，是程序无法控制和处理的，一旦出现，JVM一般会选择终止线程；Exception通常情况下是可以被程序捕获的，线程能够尽可能处理这些异常而无需被虚拟机终止。
+
+## 处理机制
+
+Java的异常处理本质上是抛出异常和捕获异常。
+
+### 抛出异常
+
+​	要理解抛出异常，**首先**要明白什么是异常情形（exception  condition），它是指阻止当前方法或作用域继续执行的问题。**其次**把异常情形和普通问题相区分，普通问题是指在当前环境下能得到足够的信息，总能处理这个错误。对于异常情形，已经无法继续下去了，因为在当前环境下无法获得必要的信息来解决问题，你所能做的就是从当前环境中跳出，并**把问题提交给上一级环境**，这就是抛出异常时所发生的事情。抛出异常后，会有几件事随之发生。**首先，是像创建普通的java对象一样将使用`new`在堆上创建一个异常对象；然后，当前的执行路径（已经无法继续下去了）被终止，并且从当前环境中弹出对异常对象的引用。**此时，异常处理机制接管程序，并开始寻找一个恰当的地方继续执行程序，这个恰当的地方就是**异常处理程序或者异常处理器**，它的任务是将程序从错误状态中恢复，以使程序要么换一种方式运行，要么继续运行下去。
+
+​	自我理解：程序执行的当前方法以某种方式发现错误，通过**throw**关键字和`new`创建一个异常对象，完成抛出异常操作。抛出异常后，当前方法后面的代码将被终止执行。
+
+​	举个简单的例子，假使我们创建了一个学生对象Student的一个引用stu,在调用的时候可能还没有初始化。所以在使用这个对象引用调用其他方法之前，要先对它进行检查，可以创建一个代表错误信息的对象，并且将它从当前环境中抛出，这样就把错误信息传播到更大的环境中。
+
+```java
+if(stu == null){
+    throw new NullPointerException();
+}
+```
+
+​	这就抛出了异常，它将在其他的地方得到执行或者处理。
+
+### 捕获异常
+
+​	在方法抛出异常之后，运行时系统将转为寻找合适的异常处理器（exception  handler）。潜在的异常处理器是异常发生时依次存留在调用栈中的方法的集合。**当异常处理器所能处理的异常类型与方法抛出的异常类型相符时，即为合适的异常处理器。**运行时系统从发生异常的方法开始，依次回查调用栈中的方法，直至找到含有合适异常处理器的方法并执行。**当运行时系统遍历调用栈而未找到合适的异常处理器，则运行时系统终止。同时，意味着Java程序的终止。**
+
+​	自我理解：捕获异常是根据抛出异常的方法，按照调用的顺序回调栈中的栈帧（方法），在每个方法中查找合适的异常处理器（`catch`括号里的异常类，可以是抛出异常的父类）。当然，抛出异常的方法也可以在当前方法进行捕获异常的操作。
+
+------
+
+> **提示**
+>
+> 对于`运行时异常`、`错误`和`检查异常`，Java技术所要求的异常处理方式有所不同。
+>
+> 由于运行时异常及其子类的不可查性，为了更合理、更容易地实现应用程序，Java规定，运行时异常将由Java运行时系统自动抛出，允许应用程序忽略运行时异常。
+>
+> 对于方法运行中可能出现的`Error`，当运行方法不想捕捉时，Java允许该方法不做任何抛出声明。因为，大多数`Error`异常属于永远不能被允许发生的状况，也属于合理的应用程序不该捕捉的异常。
+>
+> 对于所有的检查异常，Java规定：一个方法必须捕捉，或者声明抛出方法之外。也就是说，当一个方法选择不捕捉检查异常时，它必须声明将抛出异常。
+
+​	Java异常处理涉及到五个关键字，分别是：``try``、``catch``、``finally``、`throw`、``throws``。
+
+### 异常处理的基本语法
+
+**1.try-catch**
+
+```java
+try{
+	// 可能产生异常的代码
+} catch(Exception e) {
+	// 捕获异常后运行的代码
+}
+```
+
+​	在上述 `try-catch`语句中，被try关键字大括号所涵盖的代码区域被称为**监控区域（guarded region）**，这是一段可能产生异常的代码。监控区域在运行过程中发生异常，则创建异常对象，将异常对象抛出监控区域之外，由Java运行时系统负责寻找匹配的`catch`子句来捕获异常。系统会匹配遇到的第一个`catch`子句，执行其中的异常处理代码，不会再匹配第二个`catch`子句。
+
+> **提示**
+>
+> 匹配的原则是：如果抛出的异常对象属于`catch`中的异常类，或者属于该异常类的子类，则认为生成的异常类对象与`catch`子句的捕获异常类型相匹配。
+
+**PS：因为`Throwable`重写了`toString()`方法，所以在输出中直接打印异常类会显示关于该异常类描述。**
+
+
+
+**多重`catch`语句：**很多情况下，由单个的代码段可能引起多个异常。处理这种情况，我需要定义多个`catch`子句，每个子句捕获一种类型的异常，当异常被引发时，每个`catch`子句被依次检查，第一个匹配异常类型的子句将被执行，当一个`catch`子句被执行后，其他的子句被旁路。
+
+```java
+try{
+	// 可能产生异常的代码
+} catch(Exception e) {
+	// 捕获异常后运行的代码
+} catch(Exception e) {
+	// 捕获异常后运行的代码
+} ...
+```
+
+> **！提示：**
+>
+> 对于多个`catch`子句的异常处理器而言，应该尽量将捕获底层异常类的`catch`子句放在前面，同时尽量将捕获相对高层异常类的`catch`子句放在后面。否则，捕获底层异常类的`catch`子句将可能会被屏蔽，从而引起编译错误。（通俗来说就是，先派小兵，后出boss）
+
+**嵌套`try`语句：**`try`语句是可以被嵌套的，`try`代码块中可以再编写`try`代码块。每次进入`try`语句，异常的前后关系都会被推入堆栈。如果一个内部的`try`语句不含特殊异常的`catch`处理程序，堆栈将弹出，下一个`try`语句的`catch`处理程序将检查是否与之匹配。这个过程将会一直持续到一个`catch`语句被匹配成功，或者直到所有的嵌套`try`语句被检查完毕。如果没有`catch`语句匹配，Java运行时系统将处理这个程序。
+
+```java
+try {
+	// do something
+	try {
+		// do something
+	} catch (MissingResourceException e) {
+		// TODO: handle exception
+	}
+} catch (NullPointerException e) {
+	// TODO: handle exception
+}
+```
+
+切记抛出异常后，程序执行将会被终止。所以如果在第一个（外部）`try`语句中抛出异常，将不会执行第二个（内部）`try`语句的代码。
+
+**隐式嵌套`try`语句：**`try`语句的嵌套可以很隐蔽的发生。例如，我们可以将对方法的调用放在一个`try`块中。在该方法的内部，有另一个`try`语句。在这种情况下，方法内部的`try`仍然是嵌套在外部调用该方法的`try`块中的。如下代码所示，就是一个隐式嵌套：
+
+```java
+public void ouside() {
+	try {
+        inside();
+    } catch (Exception e) {
+        // handle Exception
+    }
+}
+
+public void inside() {
+    try {
+        // do something
+    } catch (Exception e) {
+        // handle Exception
+    }
+}
+```
+
+**2.throw**
+
+​	前面的`try-catch`语句都是捕获 Java运行时系统引发的异常（运行时异常，即不受检异常），关于受检异常，编译器要求我们必须对其进行处理（捕获或者抛出）。在这里，我们主要讲解`throw`语句抛出异常的形式。
+
+​	`throw`语法形式如下：
+
+```java
+throw ThrowableInstance // 这里的ThrowableInsatance一定是Throwable基类或其子类的一个对象。
+```
+
+​	程序执行完`throw`语句的抛出异常对象操作后，不会执行后面的任何语句（类似return），而是与最”近“一个相匹配的异常进行匹配，执行与之匹配的异常处理程序中的代码。如果都没有与之匹配的`catch`子句，默认异常处理程序中断程序的执行并且打印堆栈轨迹。
+
+```java
+    static void proc(){
+        try{
+            throw new NullPointerException("demo");
+        }catch(NullPointerException e){
+            System.out.println("Caught inside proc");
+            throw e;
+        }
+    }
+
+    public static void main(String [] args){
+        try{
+            proc();
+        }catch(NullPointerException e){
+            System.out.println("Recaught: "+e);
+        }
+    }
+```
+
+​	上面代码对相同的异常进行两次处理，因为在第一次处理当中又进行了一次`throw`，将异常抛出，然后根据调用栈的回调顺序在main（）方法中又捕获到了该异常。
+
+> **！提示：**
+>
+> 大部分 Java内置的异常（所有内置的运行时异常）都有一个带有`String`类型参数的构造函数，开发人员可以通过该参数来指定该异常的描述内容。在标准输出中将对象作为参数即可打印描述内容（因为`Throwable`重写了`toString`方法）。
+
+# 九、泛型	
 
 ```
 public class Box<T> {
@@ -2430,7 +2620,7 @@ public class Box<T> {
 
 
 
-## 十、注解
+# 十、注解
 
 Java 注解是附加在代码中的一些元信息，用于一些工具在编译、运行时进行解析和使用，起到说明、配置的功能。注解不会也不能影响代码的实际逻辑，仅仅起到辅助性的作用。
 
@@ -2438,7 +2628,7 @@ Java 注解是附加在代码中的一些元信息，用于一些工具在编译
 
 
 
-## 十一、特性
+# 十一、特性
 
 
 
