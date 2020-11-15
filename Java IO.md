@@ -246,13 +246,51 @@ public static void main(String[] args) throws IOException {
 
 ## Sockets
 
-- ServerSocket：服务器端类
-- Socket：客户端类
-- 服务器和客户端通过 InputStream 和 OutputStream 进行输入输出。
+​	Sockets是使用TCP协议进行网络通信的。所谓socket 通常也称作”套接字“，用于描述IP地址和端口，是一个通信链的句柄。应用程序通常通过”套接字”向网络发出请求或者应答网络请求。
+
+- `ServerSocket`：服务器端类
+- `Socket`：客户端类（服务端也有）
+- 服务器和客户端通过 `InputStream`和 `OutputStream` （流）进行输入输出。
 
 ![Sockets工作方式](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\Sockets工作方式.png)
 
+### Socket编程
 
+**服务器端套路**
+
+1. 创建`ServerSocket`对象，绑定监听端口。
+2. 通过accept（）方法监听客户端请求。
+3. 连接建立后，通过输入流（`InputStream`）读取客户端发送的请求信息。
+4. 通过输出流（`OutputSteam`）向客户端发送响应信息。
+5. 关闭响应的资源。
+
+**客户端套路**
+
+1. 创建Socket对象，指明需要连接的服务器的地址和端口号。
+2. 连接建立后，通过输出流（`OutputStream`）向服务器发送请求信息。
+3. 通过输入流获取服务器响应的信息。
+4. 关闭相应资源。（只有客户端关闭响应资源或以某种约定，服务端才能知道客户端消息发送完毕而不继续等待）
+
+**多线程实现服务器与多客户端之间通信步骤**
+
+1. 服务器端创建`ServerSocket`，循环调用accept（）等待客户端连接。
+2. 客户端创建一个`socket`并请求和服务器端连接。
+3. 服务器端接受客户端请求，创建`socket`与该客户建立专线连接。
+4. 建立连接的两个`socket`在一个单独的线程上对话。
+5. 服务器端继续等待新的连接。
+
+
+
+
+​	在Socket编程中，主要涉及两个角色：客户端和服务端。
+
+​	客户端与服务端的Socket编程大致上类似，但又存在不同。服务端主要等待客户端连接；客户端主要发起请求。客户端和服务端可以建立**双向通信**，既可以发送消息也可以接受消息。服务端可以通过**多线程技术**实现与多个客户端连接。
+
+​	对于通信的中消息结束标志，可以通过指定消息长度的方式（消息包含长度+类型+数据）告知对方结束位置。
+
+### 参考资料
+
+[Java 网络编程 之 socket 的用法与实现]: https://blog.csdn.net/a78270528/article/details/80318571
 
 ## Datagram
 
@@ -263,7 +301,244 @@ public static void main(String[] args) throws IOException {
 
 
 
+# IO模型
+
+一个IO操作通常包括两个阶段：
+
+1. 等待数据准备好（数据准备）；
+2. 从内核向进程复制数据；
+
+​	对于一个套接字上的输入操作，**第一步**通常涉及等待数据从网络中到达。到所等待数据到达时，它被复制到内核中某个缓冲区。**第二步**就是把数据从内核缓冲区复制到应用进程缓冲区。
+
+Unix 有五种 I/O 模型：
+
+- 阻塞式 I/O（同步阻塞式IO）
+- 非阻塞式 I/O（同步非阻塞式IO）
+- I/O 复用（select 和 poll）
+- 信号驱动式 I/O（SIGIO）
+- 异步 I/O（AIO）
+
+​	同步和异步在IO模型中的区别主要在IO操作的第二个阶段（从内核向进程复制数据）。**同步**的方式是进程会阻塞，主动从内核缓冲中获取数据；**异步**的方式是不阻塞进程，由CPU将内核缓冲区中的数据复制到进程缓冲区中。两者的区别就在于CPU参与度，也就是IO操作是否全部由内核来操作。
+
+​	阻塞式和非阻塞式区别在于第一阶段，数据准备过程中阻塞式IO的进程不会继续执行，而非阻塞式IO的进程可以继续执行。
+
+​	值得一提的是，异步IO是不存在阻塞的情况的，后面会详细说明。
+
+## 同步阻塞式IO
+
+​	应用进程被阻塞，直到数据从内核缓冲区复制到应用进程缓冲区中才返回。
+
+​	应该注意到，在阻塞的过程中，其它应用进程还可以执行，因此阻塞不意味着整个操作系统都被阻塞。因为其它应用进程还可以执行，所以不消耗 CPU 时间，这种模型的 CPU 利用率会比较高。
+
+下图中，**recvfrom()** 用于接收 Socket 传来的数据，并复制到应用进程的缓冲区 **buf** 中。这里把 **recvfrom()** 当成系统调用。
+
+```c
+ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, 
+                 struct sockaddr *src_addr, socklen_t *addrlen);
+```
+
+![阻塞式IO模型](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\阻塞式IO模型.png)
+
+## 同步非阻塞式IO
+
+​	应用进程执行系统调用之后，内核返回一个错误码。应用进程可以继续执行，但是需要不断的执行系统调用来获知 I/O 是否完成，这种方式称为**轮询（polling）**。
+
+​	**由于 CPU 要处理更多的系统调用，因此这种模型的 CPU 利用率比较低。**
+
+![非阻塞式IO模型](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\非阻塞式IO模型.png)
+
+## 异步IO
+
+​	应用进程执行 `aio_read` 系统调用会立即返回，应用进程可以继续执行，不会被阻塞，内核会在所有操作完成之后向应用进程发送信号（包括数据从内核缓冲区拷贝到用户缓冲区的过程）。
+
+​	**异步 I/O 与信号驱动 I/O 的区别在于，异步 I/O 的信号是通知应用进程 I/O 完成，而信号驱动 I/O 的信号是通知应用进程可以开始 I/O。**
+
+![异步IO模型](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\异步IO模型.png)
+
+## IO复用
+
+​	使用 `select` 或者 `poll` 等待数据，并且可以等待多个套接字中的任何一个变为可读。这一过程会被阻塞，当某一个套接字可读时返回，之后再使用 `recvfrom` 把数据从内核复制到进程中。
+
+​	关于`select`、`poll`和`epoll`后面详细介绍。
+
+​	它可以让单个进程具有处理多个 I/O 事件的能力。又被称为 **Event Driven I/O，即事件驱动 I/O。**
+
+​	如果一个 Web 服务器没有 I/O 复用，那么每一个 Socket 连接都需要创建一个线程去处理。如果同时有几万个连接，那么就需要创建相同数量的线程。相比于多进程和多线程技术，I/O 复用不需要进程线程创建和切换的开销，系统开销更小。
+
+![IO复用模型](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\IO复用模型.png)
+
+## 信号驱动式IO
+
+​	应用进程使用 `sigaction` 系统调用，内核立即返回，应用进程可以继续执行，也就是说等待数据阶段应用进程是非阻塞的。内核在数据到达时向应用进程发送 **SIGIO 信号**，应用进程收到之后在信号处理程序中调用 `recvfrom` 将数据从内核复制到应用进程中。
+
+​	**相比于非阻塞式 I/O 的轮询方式，信号驱动 I/O 的 CPU 利用率更高。**
+
+![信号驱动式IO模型](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\信号驱动式IO模型.png)
+
+## 五大 I/O 模型比较
+
+- 同步 I/O：将数据从内核缓冲区复制到应用进程缓冲区的阶段（第二阶段），应用进程会阻塞。
+- 异步 I/O：第二阶段应用进程不会阻塞。
+
+**同步 I/O 包括阻塞式 I/O、非阻塞式 I/O、I/O 复用和信号驱动 I/O** ，它们的主要区别在第一个阶段。
+
+非阻塞式 I/O 、信号驱动 I/O 和异步 I/O 在第一阶段不会阻塞。
+
+![五大IO模型比较图](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\五大IO模型比较图.png)
+
+# IO复用
+
+​	`select`/`poll`/`epoll` 都是 I/O 多路复用的具体实现，`select` 出现的最早，之后是 `poll`，再是 `epoll`。
+
+## select
+
+​	`select`允许应用程序监视一组文件描述符，**等待一个或多个描述符成为就绪状态**，从而完成IO操作。`select`目前几乎在所有的平台上支持，其良好跨平台支持是它的一个优点。`select`缺点在于单个进程能够监视的文件描述符的数量存在最大限制，在Linux上一般为1024，可以通过修改宏定义甚至重新编译内核的方式提升这一限制，但是这样会造成效率降低。
+
+```C
+int select(int n, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, 
+           struct timeval *timeout);
+```
+
+​	**fd_set**使用数组实现，数组大小使用**FD_SETSIZE**定义，所以只能监听少于其数量的描述符（数量限制）。 
+
+​	由上面函数可以得知，`select`函数监视的文件描述符分为3类：**readfds**、**writefds**、**exceptfds**，分别对应**读**、**写**、**异常条件**的描述符集合。**timeout**为超时参数，调用`select`会一直阻塞直到有描述符的事件达到或者等待的时间超过**timeout**（为null则立即返回）。
+
+​	成功调用返回结果大于 0，出错返回结果为 -1，超时返回结果为 0。当`select`函数返回后，可以通过遍历**fd_set**来找到就绪的描述符。
+
+​	下面是使用`select`的简单例子：
+
+```c
+fd_set fd_in, fd_out;
+struct timeval tv;
+
+// Reset the sets
+FD_ZERO( &fd_in );
+FD_ZERO( &fd_out );
+
+// Monitor sock1 for input events
+FD_SET( sock1, &fd_in );
+
+// Monitor sock2 for output events
+FD_SET( sock2, &fd_out );
+
+// Find out which socket has the largest numeric value as select requires it
+int largest_sock = sock1 > sock2 ? sock1 : sock2; 
+// 在read和write两个socket中获取最大数量作为调用select参数时的数量，有最大限制
+
+// Wait up to 10 seconds
+tv.tv_sec = 10;
+tv.tv_usec = 0;
+
+// Call the select
+int ret = select( largest_sock + 1, &fd_in, &fd_out, NULL, &tv );
+
+// Check if select actually succeed
+if ( ret == -1 )
+    // report error and abort
+else if ( ret == 0 )
+    // timeout; no event detected
+else
+{
+	//调用成功，遍历每个fd_set获取就绪的描述符 
+	
+    if ( FD_ISSET( sock1, &fd_in ) )
+        // input event on sock1
+
+    if ( FD_ISSET( sock2, &fd_out ) )
+        // output event on sock2
+}
+```
+
+
+
+## poll
+
+​	`poll`的功能与`select`类似，也是等待一组描述符中的一个成为就绪状态。
+
+```c
+int poll(struct pollfd *fds, unsigned int nfds, int timeout);
+```
+
+​	不同于`select`使用三个位图来表示三个**fd_set**的方式，`poll`使用一个`pollfd`的指针（数组）实现：
+
+```c
+struct pollfd {
+	int   fd;         /* file descriptor */
+	short events;     /* requested events */
+	short revents;    /* returned events */
+};
+```
+
+​	因为可以在程序中自定义`pollfd`数组的大小，所以使用`poll`没有数量限制。
+
+​	调用成功返回结果大于0，出错返回结果为-1，超时返回结果为0。和`select`一样，`poll`返回后同样需要遍历`pollfd`数组来获取就绪的描述符。
+
+​	下面是使用`poll`的简单例子：
+
+```c
+// The structure for two events
+struct pollfd fds[2]; // 可以自定义数组大小，没有最大数量限制
+
+// Monitor sock1 for input
+fds[0].fd = sock1;
+fds[0].events = POLLIN;
+
+// Monitor sock2 for output
+fds[1].fd = sock2;
+fds[1].events = POLLOUT;
+
+// Wait 10 seconds
+int ret = poll( &fds, 2, 10000 );
+// Check if poll actually succeed
+if ( ret == -1 )
+    // report error and abort
+else if ( ret == 0 )
+    // timeout; no event detected
+else
+{
+    // 调用成功，遍历pollfd数组获取就绪的描述符。
+    
+    // If we detect the event, zero it out so we can reuse the structure
+    if ( fds[0].revents & POLLIN )
+        fds[0].revents = 0;
+        // input event on sock1
+
+    if ( fds[1].revents & POLLOUT )
+        fds[1].revents = 0;
+        // output event on sock2
+}
+```
+
+
+
+## 比较select和poll
+
+### 1. 功能
+
+`select` 和 `poll` 的功能基本相同，不过在一些实现细节上有所不同：
+
+- `select` 会修改描述符，而 `poll` 不会；
+- `select` 的描述符类型使用数组实现，**FD_SETSIZE** 大小默认为 1024，因此默认只能监听少于 1024 个描述符。如果要监听更多描述符的话，需要修改 **FD_SETSIZE** 之后重新编译；而 `poll` 没有描述符数量的限制；
+- `poll` 提供了更多的事件类型，并且对描述符的重复利用上比 `select` 高。
+- 如果一个线程对某个描述符调用了 `select` 或者 `poll`，另一个线程关闭了该描述符，会导致调用结果不确定。
+
+### 2. 速度
+
+`select` 和 `poll` 速度都比较慢，每次调用都需要将全部描述符从应用进程缓冲区复制到内核缓冲区。
+
+### 3. 可移植性
+
+几乎所有的系统都支持 `select`，但是只有比较新的系统支持 `poll`。
+
+## epoll
+
+
+
 # 参考资料
 
 [CyC2018之JavaIO]: https://github.com/CyC2018/CS-Notes/blob/master/notes/JavaIO.md
+
+[同步、异步、阻塞、非阻塞IO总结（IO模型总结）]: https://blog.csdn.net/qq_36573828/article/details/89149057
+
+[Linux IO模式及 select、poll、epoll详解]: https://segmentfault.com/a/1190000003063859
 
