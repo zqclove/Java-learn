@@ -299,6 +299,280 @@ public static void main(String[] args) throws IOException {
 
 # NIO
 
+​	NIO（Non-blocking I/O，在Java领域也被称为New I/O），是一种**同步非阻塞**的I/O模型，也是I/O多路复用的基础，已经被越来越多地应用到大型应用服务器，成为解决高并发与大量连接、I/O处理问题的有效方式。	
+
+​	新的输入/输出 (NIO) 库是在 JDK 1.4 中引入的，弥补了原来的 I/O 的不足，提供了**高速的、面向块**的 I/O。
+
+## 流与块
+
+​	I/O 与 NIO 最重要的**区别是数据打包和传输的方式**，**I/O 以流的方式处理数据**，而 **NIO 以块的方式处理数据**。
+
+​	**面向流的 I/O 一次处理一个字节数据**：一个输入流产生一个字节数据，一个输出流消费一个字节数据。为流式数据创建过滤器非常容易，链接几个过滤器，以便每个过滤器只负责复杂处理机制的一部分。不利的一面是，面向流的 I/O 通常相当慢。
+
+​	**面向块的 I/O 一次处理一个数据块**，按块处理数据比按流处理数据要快得多。但是面向块的 I/O 缺少一些面向流的 I/O 所具有的优雅性和简单性。
+
+​	I/O 包和 NIO 已经很好地集成了，`java.io.*` 已经以 NIO 为基础重新实现了，所以现在它可以利用 NIO 的一些特性。例如，`java.io.*` 包中的一些类包含以块的形式读写数据的方法，这使得即使在面向流的系统中，处理速度也会更快。
+
+## 通道与缓冲区
+
+### 通道
+
+​	**通道 `Channel` 是对原 I/O 包中的流的模拟，可以通过它读取和写入数据**。
+
+​	通道与流的不同之处在于，**流只能在一个方向上移动**(一个流必须是 InputStream 或者 OutputStream 的子类)，而**通道是双向的，可以用于读、写或者同时用于读写**。
+
+​	通道包括以下类型：
+
+- **FileChannel**：从文件中读写数据；
+- **DatagramChannel**：通过 UDP 读写网络中数据；
+- **SocketChannel**：通过 TCP 读写网络中数据；
+- **ServerSocketChannel**：可以监听新进来的 TCP 连接，对每一个新进来的连接都会创建一个 **SocketChannel**。
+
+### 缓冲区
+
+​	发送给一个通道的所有数据都必须首先放到缓冲区中，同样地，从通道中读取的任何数据都要先读到缓冲区中。也就是说，**不会直接对通道进行读写数据，而是要先经过缓冲区**。
+
+​	缓冲区实质上是一个数组，但它不仅仅是一个数组。缓冲区提供了对数据的结构化访问，而且还可以跟踪系统的读/写进程。
+
+缓冲区包括以下类型：
+
+- **ByteBuffer**
+- **CharBuffer**
+- **ShortBuffer**
+- **IntBuffer**
+- **LongBuffer**
+- **FloatBuffer**
+- **DoubleBuffer**
+
+## 缓冲区状态变量
+
+- **capacity**：最大容量；
+- **position**：当前已经读写的字节数；
+- **limit**：还可以读写的字节数的最后位置；
+
+**状态变量的改变过程举例**：
+
+① 新建一个大小为 8 个字节的缓冲区，此时 **position** 为 0，而 **limit** = **capacity** = 8。**capacity** 变量不会改变，下面的讨论会忽略它。
+
+![缓冲区状态变量1](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\缓冲区状态变量1.png)
+
+② 从输入通道中读取 5 个字节数据写入缓冲区中，此时 **position** 为 5，**limit** 保持不变。
+
+![缓冲区状态变量2](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\缓冲区状态变量2.png)
+
+③ 在将缓冲区的数据写到输出通道之前，需要先调用 **flip()** 方法，这个方法将 **limit** 设置为当前 **position**，并将 **position** 设置为 0。
+
+![缓冲区状态变量3](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\缓冲区状态变量3.png)
+
+④ 从缓冲区中取 4 个字节到输出缓冲中，此时 **position** 设为 4。
+
+![缓冲区状态变量4](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\缓冲区状态变量4.png)
+
+⑤ 最后需要调用 **clear()** 方法来清空缓冲区，此时 **position** 和 **limit** 都被设置为最初位置。
+
+![缓冲区状态变量5](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\缓冲区状态变量5.png)
+
+
+
+## 选择器
+
+​	NIO 常常被叫做**非阻塞 IO**，主要是因为 NIO 在网络通信中的非阻塞特性被广泛使用。
+
+​	NIO 实现了 IO 多路复用中的 **Reactor** 模型，**一个线程 Thread** 使用**一个选择器 Selector** 通过**轮询**的方式去监听**多个通道 Channel 上的事件**，从而让一个线程就可以处理多个事件。
+
+​	**通过配置监听的通道 Channel 为非阻塞**，那么当 Channel 上的 IO 事件还未到达时，就不会进入阻塞状态一直等待，而是继续轮询其它 Channel，找到 IO 事件已经到达的 Channel 执行。
+
+​	因为创建和切换线程的开销很大，因此使用一个线程来处理多个事件而不是一个线程处理一个事件，对于 IO 密集型的应用具有很好地性能。
+
+​	应该注意的是，**只有 SocketChannel 才能配置为非阻塞**，而 FileChannel 不能，为 FileChannel 配置非阻塞也没有意义。
+
+![选择器](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\选择器.png)
+
+下面介绍使用选择器应用在套接字上的编程模板：
+
+1. **创建选择器**：
+
+    选择器对象通过静态方法获取：
+
+    ```java
+    Selector selector = Selector.open();
+    ```
+
+2. **将通道注册到选择器上**：
+
+    ```java
+    ServerSocketChannel ssChannel = ServerSocketChannel.open();
+    ssChannel.configureBlocking(false);
+    ssChannel.register(selector, SelectionKey.OP_ACCEPT);
+    ```
+
+    ​	**通道必须配置为非阻塞模式**，否则使用选择器就没有任何意义了，因为如果通道在某个事件上被阻塞，那么服务器就不能响应其它事件，必须等待这个事件处理完毕才能去处理其它事件，显然这和选择器的作用背道而驰。
+
+    ​	在将通道注册到选择器上时，还需要指定要注册的**具体事件**（类似`epoll`的**epoll_event**集合），主要有以下几类：
+
+    - **SelectionKey.OP_CONNECT**
+    - **SelectionKey.OP_ACCEPT**
+    - **SelectionKey.OP_READ**
+    - **SelectionKey.OP_WRITE**
+
+    它们在 **SelectionKey** 的定义如下：
+
+    ```java
+    public static final int OP_READ = 1 << 0;
+    public static final int OP_WRITE = 1 << 2;
+    public static final int OP_CONNECT = 1 << 3;
+    public static final int OP_ACCEPT = 1 << 4;
+    ```
+
+    可以看出每个事件可以被当成一个位域，从而组成事件集整数（用二进制位数上的1表示对某事件感兴趣）。例如：
+
+    ```java
+    int interestSet = SelectionKey.OP_READ | SelectionKey.OP_WRITE;
+    // OP_READ = 00001 , OP_WRITE = 00100
+    // 所以两者或运算结果为： 00101 ，该数就表示对读写感兴趣
+    ```
+
+3. **监听事件**：
+
+    **个人问题**：关于**select()**的阻塞调用问题：使用**select()**接受请求，为什么还说NIO是非阻塞的呢？
+
+    **答**：在NIO中，在处理请求的线程在接受请求（等待数据）的过程中，的确是阻塞的，但接受请求后，其相应工作可以派发给别的任务完成，处理请求的线程可以继续处理别的请求。（参考https://www.zhihu.com/question/64056856）
+
+    **个人猜测**：这里的非阻塞与通道配置有关，在第2步的代码中可以看到会将通道设置成非阻塞，所以猜测说NIO非阻塞的原因是在通道上，即对单个事件的阻塞与否。
+
+    ```java
+    int num = selector.select();
+    ```
+
+    使用 **select()** 来监听到达的事件，它会**一直阻塞**直到有至少一个事件到达。
+
+4. **获取到达的事件**：
+
+    ```java
+    Set<SelectionKey> keys = selector.selectedKeys();
+    Iterator<SelectionKey> keyIterator = keys.iterator();
+    while (keyIterator.hasNext()) {
+        SelectionKey key = keyIterator.next();
+        if (key.isAcceptable()) {
+            // ...
+        } else if (key.isReadable()) {
+            // ...
+        }
+        keyIterator.remove();
+    }
+    ```
+
+5. **事件循环**：
+
+因为一次 **select()** 调用不能处理完所有的事件，并且服务器端有可能需要一直监听事件，因此服务器端处理事件的代码一般会放在一个死循环内。
+
+```java
+while (true) {
+    int num = selector.select();
+    Set<SelectionKey> keys = selector.selectedKeys();
+    Iterator<SelectionKey> keyIterator = keys.iterator();
+    while (keyIterator.hasNext()) {
+        SelectionKey key = keyIterator.next();
+        if (key.isAcceptable()) {
+            // ...
+        } else if (key.isReadable()) {
+            // ...
+        }
+        keyIterator.remove();
+    }
+}
+```
+
+## 套接字NIO实例
+
+```java
+public class NIOServer {
+
+    public static void main(String[] args) throws IOException {
+
+        Selector selector = Selector.open();
+
+        ServerSocketChannel ssChannel = ServerSocketChannel.open();
+        ssChannel.configureBlocking(false);
+        ssChannel.register(selector, SelectionKey.OP_ACCEPT);
+
+        ServerSocket serverSocket = ssChannel.socket();
+        InetSocketAddress address = new InetSocketAddress("127.0.0.1", 8888);
+        serverSocket.bind(address);
+
+        while (true) {
+
+            selector.select();
+            Set<SelectionKey> keys = selector.selectedKeys();
+            Iterator<SelectionKey> keyIterator = keys.iterator();
+
+            while (keyIterator.hasNext()) {
+
+                SelectionKey key = keyIterator.next();
+
+                if (key.isAcceptable()) {
+
+                    ServerSocketChannel ssChannel1 = 
+                        (ServerSocketChannel) key.channel();
+
+                    // 服务器会为每个新连接创建一个 SocketChannel
+                    SocketChannel sChannel = ssChannel1.accept();
+                    sChannel.configureBlocking(false);
+
+                    // 这个新连接主要用于从客户端读取数据
+                    sChannel.register(selector, SelectionKey.OP_READ);
+
+                } else if (key.isReadable()) {
+
+                    SocketChannel sChannel = (SocketChannel) key.channel();
+                    System.out.println(readDataFromSocketChannel(sChannel));
+                    sChannel.close();
+                }
+
+                keyIterator.remove();
+            }
+        }
+    }
+
+	private static String readDataFromSocketChannel(SocketChannel sChannel) 
+        throws IOException {
+
+        ByteBuffer buffer = ByteBuffer.allocate(1024);
+        StringBuilder data = new StringBuilder();
+
+        while (true) {
+
+            buffer.clear();
+            int n = sChannel.read(buffer);
+            if (n == -1) {
+                break;
+            }
+            buffer.flip();
+            int limit = buffer.limit();
+            char[] dst = new char[limit];
+            for (int i = 0; i < limit; i++) {
+                dst[i] = (char) buffer.get(i);
+            }
+            data.append(dst);
+            buffer.clear();
+        }
+        return data.toString();
+    }
+}
+public class NIOClient {
+
+    public static void main(String[] args) throws IOException {
+        Socket socket = new Socket("127.0.0.1", 8888);
+        OutputStream out = socket.getOutputStream();
+        String s = "hello world";
+        out.write(s.getBytes());
+        out.close();
+    }
+}
+```
+
+
+
 
 
 # IO模型
@@ -449,8 +723,6 @@ else
 }
 ```
 
-
-
 ## poll
 
 ​	`poll`的功能与`select`类似，也是等待一组描述符中的一个成为就绪状态。
@@ -532,7 +804,175 @@ else
 
 ## epoll
 
+​	`epoll`是在2.6内核中提出的，是之前的`select`和`poll`的增强版本。相对于`select`和`poll`来说，`epoll`更加灵活，没有描述符数量限制。`epoll`使用**一个文件描述符管理多个描述符**，将用户关系的描述符的事件存放到内核的一个事件表中，这样在用户控件和内核空间的复制只需要一次。
 
+​	`epoll` 仅适用于 Linux OS。
+
+### epoll操作过程
+
+​	`epoll`操作过程需要三个接口：
+
+```c
+int epoll_create(int size);
+int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)；
+int epoll_wait(int epfd, struct epoll_event * events, int maxevents, int timeout);
+```
+
+1. **int epoll_create(int size)**：
+
+    该接口会创建一个`epoll`句柄，其中参数**size**用来告诉内核这个监听的数目一共有多大。该参数不同于`select()`中的第一个参数，给出最大监听的fd+1的值。**size**参数并不是限制`epoll`所能监听的描述符最大个数，只是对内核初始分配数据结构的一个建议。
+
+    当创建好`epoll`句柄后，它会占用一个 fd值。在linux下，如果查看/proc/进程id/fd/，是能够看到这个fd的。所以在使用完`epoll`后，必须调用`close()`关闭，否则可能导致fd被耗尽。
+
+2. **int epoll_ctl(int epfd, int op, int fd, struct epoll_event *event)**：
+
+    该接口是对指定描述符执行**op**操作。其中各参数含义为：
+
+    - **epfd整型参数**：是**epoll_create()**函数的返回值；
+
+    - **op整型参数**：表示op操作，用三个宏表示：**EPOLL_CTL_ADD（添加）**，**EPOLL_CTL_DEL（删除）**，**EPOLL_CTL_MOD（修改）**。分别添加、删除和修改对fd的监听事件；
+
+    - **fd整型参数**：是需要监听的fd（外部socket）；
+
+    - **event指针参数**：是告诉内核需要监听什么事件，**epoll_event**结构如下：
+
+        ```c
+        struct epoll_event {
+         __unit32_t events; // 下面宏的集合，例如 events = EPOLLIN | EPOLLONESHOT
+         epoll_data_t data; // 用户数据变量，好像是外部socket的连接
+        };
+        
+        // events可以是以下宏的集合：
+        EPOLLIN ：表示对应的文件描述符可以读（包括对端socket正常关闭）；
+        EPOLLOUT：表示对应的文件描述符可以写；
+        EPOLLPRI：表示对应的文件描述符有紧急的数据可读（这里应该表示有带外数据到来）；
+        EPOLLERR：表示对应的文件描述符发生错误；
+        EPOLLHUB：表示对应的文件描述符被挂断；
+        EPOLLET ：将EPOLL设为边缘触发（Edge Triggerd）模式，
+            这是相对于水平触发（Level Triggerd）来说的；
+        EPOLLONESHOT：只监听一次事件。当监听完这次事件之后，如果还需要继续监听这个socket的话，
+            需要再次把这个socket加入到EPOLL队列里；
+        ```
+
+3. **int epoll_wait(int epfd, struct epoll_event * events, int maxevents, int timeout)**：
+
+    等待**epfd**上的IO事件，最多返回**maxevents**数量的事件。
+
+    - **events**参数：用来**从内核得到事件的集合**（程序创建的数组，作为参数传给内核）；
+    - **maxevents**参数：告诉内核这个**events**数组有多大，这个**maxevents**的值不能大于**epoll_create()**中的**size**的值；
+    - **timeout**：参数是超时时间（毫秒，0会立即返回；-1将不确定，也可以说是永久阻塞）。
+
+    **该函数返回需要处理的事件数目**，如返回0表示已超时。
+
+------
+
+​	**epoll_ctl()** 用于**向内核注册新的描述符或者是改变某个文件描述符的状态**。已注册的描述符在内核中会被维护在一棵红黑树上，通过回调函数内核会将 I/O 准备好的描述符加入到一个链表中管理，进程调用 **epoll_wait()** 便可以得到事件完成的描述符。
+
+​	使用`epoll`的例子：
+
+```c
+// Create the epoll descriptor. Only one is needed per app, and is used to monitor all sockets.
+// The function argument is ignored (it was not before, but now it is), so put your favorite number here
+int pollingfd = epoll_create( 0xCAFE ); // 创建epoll句柄
+
+if ( pollingfd < 0 )
+ // report error
+
+// Initialize the epoll structure in case more members are added in future
+struct epoll_event ev = { 0 }; // 初始化事件
+
+// Associate the connection class instance with the event. You can associate anything
+// you want, epoll does not use this information. We store a connection class pointer, pConnection1
+ev.data.ptr = pConnection1;
+
+// Monitor for input, and do not automatically rearm the descriptor after the event
+ev.events = EPOLLIN | EPOLLONESHOT; // 表明需要监听什么事件
+// Add the descriptor into the monitoring list. We can do it even if another thread is
+// waiting in epoll_wait - the descriptor will be properly added
+if ( epoll_ctl( epollfd, EPOLL_CTL_ADD, pConnection1->getSocket(), &ev ) != 0 ) 
+    // 向内核注册新的描述符，为0报错。
+    // report error
+
+// Wait for up to 20 events (assuming we have added maybe 200 sockets before that it may happen)
+struct epoll_event pevents[ 20 ]; // 用于存放已到达的事件
+
+// Wait for 10 seconds, and retrieve less than 20 epoll_event and store them into epoll_event array
+int ready = epoll_wait( pollingfd, pevents, 20, 10000 );
+// Check if epoll actually succeed
+if ( ret == -1 )
+    // report error and abort
+else if ( ret == 0 )
+    // timeout; no event detected
+else
+{
+    // Check if any events detected
+    for ( int i = 0; i < ready; i++ )
+    {
+        // 只操作事件EPOLLIN
+        if ( pevents[i].events & EPOLLIN )
+        {
+            // Get back our connection pointer
+            Connection * c = (Connection*) pevents[i].data.ptr;
+            c->handleReadEvent();
+         }
+    }
+}
+```
+
+------
+
+**个人总结**：
+
+​	操作`epoll`的三个接口，主要用于创建句柄、向内核注册或修改描述符、获取事件。通俗来讲就是，准备epoll了（创建句柄，**epoll_create()**）、epoll要干什么（注册并表明干什么和监听什么事件）、获取epoll结果（获取监听事件）。
+
+​	`epoll`类似一个应用程序与内核之间的通道规范，应用程序通过各种参数告知内核需要什么，内核通过这些参数监听外部socket，一旦有事件发生，将事件通过`epoll`通道回调到链表上，待应用程序获取。
+
+​	由上面可知，当事件就绪时，是**内核**通过回调机制放到缓冲区中，等待进程获取。进程通过 **epoll_wait()** 从缓冲区中获取已就绪的事件集合，而不是像`select`和`poll`通过轮询全部fd的方式获取就绪fd。
+
+​	在`epoll`操作中，有 **epoll_event** 的结构类型，该结构类型用于保存事件类型和连接相关结构，表示某连接发生了什么事件。
+
+------
+
+### 工作模式
+
+​	`epoll` 的描述符事件有两种触发模式：**LT（level trigger）**和 **ET（edge trigger）**。**LT模式是默认模式**。
+
+​	**LT模式**与**ET模式**的区别：
+
+- **LT模式**：当 **epoll_wait()** 检测到描述符事件发生并将此事件通知应用程序，**应用程序可以不立即处理该事件**。如果不处理，下次调用 **epoll_wait()** 时，还会再次通知应用程序处理该事件。
+- **ET模式**：当 **epoll_wait()** 检测到描述符事件发生并将次事件通知应用程序，**应用程序必须立即处理该事件**。如果不处理，下次调用 **epoll_wait()** 时，不会再次通知应用程序处理该事件。
+
+**LT 模式**
+
+​	当 **epoll_wait()** 检测到描述符事件到达时，内核会将此事件通知进程，进程可以不立即处理该事件，下次调用 **epoll_wait()** 会再次通知进程。是默认的一种模式，并且同时支持 **Blocking** 和 **No-Blocking**。
+
+**ET 模式**
+
+​	和 LT 模式不同的是，通知之后进程必须立即处理事件，下次再调用 **epoll_wait()** 时不会再得到事件到达的通知。
+
+​	很大程度上减少了 epoll 事件被重复触发的次数，因此效率要比 LT 模式高。只支持 **No-Blocking**，**以避免由于一个文件句柄的阻塞读/阻塞写操作把处理多个文件描述符的任务饿死**。
+
+### 应用场景
+
+​	很容易产生一种错觉认为只要用 `epoll` 就可以了，`select` 和 `poll` 都已经过时了，其实它们都有各自的使用场景。
+
+#### select 应用场景
+
+​	`select`的 **timeout** 参数精度为微秒，而 `poll` 和 `epoll` 为毫秒，因此 `select` 更加**适用于实时性要求比较高的场景，比如核反应堆的控制。**
+
+​	`select` 可**移植性更好**，几乎被所有主流平台所支持。
+
+#### poll 应用场景
+
+​	`poll` 没有最大描述符数量的限制，如果平台支持并且对实时性要求不高，应该使用 `poll` 而不是 `select`。
+
+#### epoll 应用场景
+
+​	只需要运行在 Linux 平台上，有大量的描述符需要同时轮询，并且这些连接最好是长连接。
+
+​	需要同时监控小于 1000 个描述符，就没有必要使用 `epoll`，因为这个应用场景下并不能体现 epoll 的优势。
+
+​	需要监控的描述符状态变化多，而且都是非常短暂的，也没有必要使用 `epoll`。因为 `epoll`  中的所有描述符都存储在内核中，造成每次需要对描述符的状态改变都需要通过 **epoll_ctl()** 进行系统调用，频繁系统调用降低效率。并且  epoll 的描述符存储在内核，不容易调试。
 
 # 参考资料
 
@@ -541,4 +981,6 @@ else
 [同步、异步、阻塞、非阻塞IO总结（IO模型总结）]: https://blog.csdn.net/qq_36573828/article/details/89149057
 
 [Linux IO模式及 select、poll、epoll详解]: https://segmentfault.com/a/1190000003063859
+
+[Java NIO浅析]: https://tech.meituan.com/2016/11/04/nio.html
 
