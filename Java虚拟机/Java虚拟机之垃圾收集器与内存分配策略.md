@@ -83,11 +83,11 @@ public class ReferenceCountingGC {
 
 ### 强引用
 
-​	强引用就是传统定义下的对象，是指在程序代码中普遍存在的引用赋值，即类似“ Object obj = new Object() ”这中引用关系。对象是强引用的情况下，只要存在引用链当中，垃圾收集器就永远不会回收该对象。
+​	强引用就是传统定义下的对象，是指在程序代码中普遍存在的引用赋值，即类似“ Object obj = new Object() ”这中引用关系。**对象是强引用的情况下，只要存在引用链当中，垃圾收集器就永远不会回收该对象**。
 
 ### 软引用
 
-​	软引用是指一些有用但并非必须的对象。被软引用关联的对象只有在内存不够的情况下才会被进行第二次回收，如果这次回收还是没有足够内存，才会抛出内存溢出异常。即软引用能存活到内存不足前的时期。
+​	软引用是**指一些有用但并非必须的对象**。被软引用关联的对象只有在内存不够的情况下才会被进行第二次回收，如果这次回收还是没有足够内存，才会抛出内存溢出异常。即**软引用能存活到内存不足前的时期**。
 
 ​	使用SoftReference类实现软引用：
 
@@ -99,7 +99,7 @@ obj = null;  // 使对象只被软引用关联
 
 ### 弱引用
 
-​	弱引用是指非必须对象，但是它的强度比软引用要弱一些，只能存活到下一次GC发生为止，即当GC发生后，无论内存是否足够，都会回收掉被弱引用关联的对象。
+​	弱引用是指非必须对象，但是它的强度比软引用要弱一些，**只能存活到下一次GC发生为止**，即当GC发生后，无论内存是否足够，都会回收掉被弱引用关联的对象。
 
 ​	使用WeekReference类实现弱引用：
 
@@ -111,7 +111,7 @@ obj = null;
 
 ### 虚引用
 
-​	虚引用又称为“幽灵引用”或“幻影引用”，是最弱的一种引用。一个对象是否有虚引用的存在，不会对其生存时间造成影响，也无法通过虚引用得到一个对象。为一个对象设置虚引用的唯一目的是能在这个对象被回收时收到一个系统通知。
+​	虚引用又称为“幽灵引用”或“幻影引用”，是最弱的一种引用。一个对象是否有虚引用的存在，不会对其生存时间造成影响，也无法通过虚引用得到一个对象。**为一个对象设置虚引用的唯一目的是能在这个对象被回收时收到一个系统通知。**
 
 ​	使用 PhantomReference 来创建虚引用：
 
@@ -145,9 +145,9 @@ obj = null;
 
 ​	判定一个类型是否属于“不再使用的类型”的条件比较苛刻，必须同时满足以下三个条件：
 
-- 该类的所有实例已经被回收，Java堆中不再存在该类型及其任何派生子类的实例。
-- 该类的类加载器已经被回收。该条件通常很难达到，除非是经过精心设计的可替换类加载的场景，如OSGi、JSP的重加载等。
-- 该类对应的java.lang.Class对象没有在任何地方被引用，无法在任何地方通过反射访问该类的方法。（我对于这句话的理解是：与该类——不再使用的类型相关的**类类型对象**没有被引用，即该类没有被反射访问）
+- **该类的所有实例已经被回收**，Java堆中不再存在该类型及其任何派生子类的实例。
+- **该类的类加载器已经被回收**。该条件通常很难达到，除非是经过精心设计的可替换类加载的场景，如OSGi、JSP的重加载等。
+- **该类对应的java.lang.Class对象没有在任何地方被引用**，无法在任何地方通过反射访问该类的方法。（我对于这句话的理解是：与该类——不再使用的类型相关的**类类型对象**没有被引用，即该类没有被反射访问）
 
 ​	当满足上述三个条件时，Java虚拟机被允许对该类进行回收。被允许是指需要通过参数进行控制，而不是像 Java堆中的对象一样没有了引用就会自然回收。关于是否要对类型进行回收，HotSpot虚拟机提供了**-Xnoclassgc**参数进行控制，还可以使用**-verbose：class**以及**-XX：+TraceClass-Loading**、**-XX：+TraceClassUnLoading**查看类加载和卸载信息，其中-verbose：class和-XX：+TraceClassLoading可以在Product版的虚拟机中使用，-XX：+TraceClassUnLoading参数需要FastDebug版的虚拟机支持。
 
@@ -559,6 +559,96 @@ public class MinorGCTest {
 
 > `-XX：PretenureSizeThreshold`参数只对**Serial**和**ParNew**两款新生代收集器有效，HotSpot的其他新生代收集器，如Parallel Scavenge并不支持这个参数。如果必须使用此参数进行调优，可考虑ParNew加CMS的收集器组合。
 
+## 长期存活的对象将进入老年代
 
+​	根据分代假说，HotSpot虚拟机多数收集器都采用了分代收集来管理堆内存，那内存回收时就必须能决定哪些对象应当放在新生代，哪些对象放在老年代。为了做到区分“老对象”和“新对象”，虚拟机在每个对象头中定义了一个**年龄计数器**，表示熬过**Minor GC**的次数。我们可以根据参数`-XX:MaxTenuringThreshold`的值（默认为15）来确定“新对象”和“老对象”的分水岭。
+
+​	通过一下代码进行测试：
+
+```java
+/*
+	VM参数：
+	-Xms20M 
+	-Xmx20M 
+	-Xmn10M 
+	-XX:+PrintGCDetails 
+	-XX:SurvivorRatio=8 
+	-client 
+	-XX:+UseSerialGC 
+	-XX:MaxTenuringThreshold=X (X= 1或15)
+	-XX:+PrintTenuringDistribution
+*/
+public class TestTenuringThreshold {
+    private static final int _1MB = 1024 * 1024;
+    
+    @SuppressWarnings("unused")
+    public static void testTenuringThreshold() {
+        byte[] allocation1, allocation2, allocation3, allocation4;
+        allocation1 = new byte[_1MB / 4];
+        allocation2 = new byte[4 * _1MB];
+        allocation3 = new byte[4 * _1MB];	// 第一次Minor GC发生
+        allocation3 = null;
+        allocation3 = new byte[4 * _1MB];	// 第二次Minor GC发生
+                
+    }
+    
+    public static void main(String[] args) {
+        testTenuringThreshold();
+    }
+}
+```
+
+​	**将阈值设为1**时，垃圾收集日志打印结果如下：
+
+![进入老年带代年龄阈值设为1](C:\Users\Administrator\Desktop\学习\java\Java-learn\Java虚拟机\img\进入老年带代年龄阈值设为1.PNG)
+
+​	可以看到在第二次**Minor GC**（下面的高亮部分）时，新生代已使用空间变为0，即第二次GC后，**allocation1对象**的年龄从1变成了2，超过了阈值，会进入老年代（也可以看到老年代的空间为4867，近似于新生代原本空间）。
+
+------
+
+​	**将阈值设为15**时，垃圾收集日志打印结果如下：
+
+![进入老年代年龄阈值设为15](C:\Users\Administrator\Desktop\学习\java\Java-learn\Java虚拟机\img\进入老年代年龄阈值设为15.PNG)
+
+​	按照理论来说，第二次**Minor GC**后应该仍保存有**allocation1对象**，但根据结果表明第二次**Minor GC**后新生代空间变为0了。
+
+​	这里涉及到**动态对象年龄判定**，下一节介绍。大概意思是当**Suvivor区**中同龄对象占用空间大于一半时，会将大于等于该年龄的对象存入老年代，而不再是要达到阈值后才进入老年代。
+
+​	在上面结果中，发现第一次**Minor GC**后，仍留有772K的空间在**Suvivor区**，这已经是超过1MB大小的**Suvivor区**的一半了，所以在第二次**Minor GC后**，会将这772K放进老年代。
+
+## 动态对象年龄判定
+
+​	为了能更好地适应不同程序的内存状况，HotSpot虚拟机并不是永远要求对象的年龄必须达到                           `-XX：MaxTenuringThreshold`才能晋升老年代，**如果在Survivor空间中相同年龄所有对象大小的总和大于**
+**Survivor空间的一半，年龄大于或等于该年龄的对象就可以直接进入老年代**，无须等到`-XX：
+MaxTenuringThreshold`中要求的年龄。
+
+​	这就是为什么上一节的实验中会出现异于理论的情况。在这不再实验，请回看上节实验。
 
 ## 空间分配担保
+
+​	在发生**Minor GC**之前，虚拟机必须**先检查老年代最大可用的连续空间是否大于新生代所有对象总空间**，如果这个条件成立，那这一次**Minor GC**可以确保是安全的；如果不成立，则虚拟机会先查看											`-XX：HandlePromotionFailure`参数的设置值**是否允许担保失败**（Handle Promotion Failure）。**如果允许，那会继续检查老年代最大可用的连续空间是否大于历次晋升到老年代对象的平均大小**，如果大于，将尝试进行一次**Minor GC**，尽管这次**Minor GC**是有风险的；如果小于，或者`-XX：HandlePromotionFailure`设置不允许冒险，那这时就要改为进行一次**Full GC**。
+
+​	流程图如下：
+
+![空间分配担保](C:\Users\Administrator\Desktop\学习\数据库\Database-learn\img\空间分配担保.png)
+
+​	根据晋升到老年代对象的平均大小进行**Minor GC**是冒险的，因为新生代采用的标记复制算法无法在实际回收之前确定一共有多少对象会在这次回收当中存活，存在这**Suvivor**空间装不下的情况，所以需要老年代作分派担保，而担保需要足够的空间，因此只能取之前每次回收晋升到老年代对象大小的平均值作为经验，与老年代可用的最大连续空间作比较，决定是否进行**Full GC**来让老年代腾出更多空间。这是一种赌概率的解决方法，但目的也是为了避免**Full GC**的频繁进行，属于一种下策。
+
+​	虽然说根据经验值进行判断是一种下策，但却能减少**Full GC**次数，因此在 Java 6 update 24之后						`-XX:HandlePromotionFailure`参数不再影响虚拟机的空间分配担保策略了。
+
+​	HotSpot中空间分配检查的代码片段（可以看见没有使用参数判断的代码了）：
+
+```c++
+bool TenuredGeneration::promotion_attempt_is_safe(size_t
+	max_promotion_in_bytes) const {
+	// 老年代最大可用的连续空间
+	size_t available = max_contiguous_available();
+	// 每次晋升到老年代的平均大小
+	size_t av_promo = (size_t)gc_stats()->avg_promoted()->padded_average();
+	// 老年代可用空间是否大于平均晋升大小，或者老年代可用空间是否大于当此GC时新生代所有对象容量
+	bool res = (available >= av_promo) || 
+		(available >= max_promotion_in_bytes);
+	return res;
+}
+```
+
