@@ -109,7 +109,7 @@ java -Xms1M -Xmx2M HackTheJava
 
 ## 对象的创建
 
-​	当 Java虚拟机遇到一条**字节码new指令 **时，首先将去检查这个**指令的参数是否能在常量池中定位到**一个**类的符号引用**，并且检查这个**符号引用代表的类是否已被加载、解析和初始化过**。如果没有，那必须先执行相应的[类加载过程](#类的加载过程)。
+​	当 Java虚拟机遇到一条**字节码new指令 **时，首先将去检查这个**指令的参数是否能在常量池中定位到**一个**类的符号引用**，并且检查这个**符号引用代表的类是否已被加载、解析和初始化过**。如果没有，那必须先执行相应的类加载过程。
 
 ​	在类加载检查通过后，接下来虚拟机将为新生对象分配内存。对象所需内存的大小在类加载完成后便可完全确定（如何确定见[对象的内存布局](#对象的内存布局)），为对象分配空间的任务实际上便等同于把一块确定大小的内存块从Java堆中划分出来。
 
@@ -189,11 +189,11 @@ java -Xms1M -Xmx2M HackTheJava
 
 ​	如果使用**句柄访问**的话，Java堆中可能会划分出一块内存作为句柄池，**reference中存储的就是对象的句柄地址**，而**句柄中包含了对象到实例数据和类型数据的指针**，结构如下图所示：
 
-![reference通过句柄访问对象数据](C:\Users\Administrator\Desktop\学习\java\Java-learn\Java虚拟机\reference通过句柄访问对象数据.png)
+![reference通过句柄访问对象数据](C:\Users\Administrator\Desktop\学习\java\Java-learn\Java虚拟机\img\reference通过句柄访问对象数据.png)
 
 ​	如果使用**直接指针**访问的话，Java堆中对象的内存布局就必须考虑如何放置访问类型数据的相关信息，**reference中直接存储对象地址**。如果只是访问对象本身的话，就不需要多一次间接访问的开销，其结构如下图所示。
 
-![reference通过直接指针访问对象数据](C:\Users\Administrator\Desktop\学习\java\Java-learn\Java虚拟机\reference通过直接指针访问对象数据.png)
+![reference通过直接指针访问对象数据](C:\Users\Administrator\Desktop\学习\java\Java-learn\Java虚拟机\img\reference通过直接指针访问对象数据.png)
 
 ​	这两种对象访问方式各有优势：
 

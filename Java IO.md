@@ -326,7 +326,7 @@ public static void main(String[] args) throws IOException {
 - **FileChannel**：从文件中读写数据；
 - **DatagramChannel**：通过 UDP 读写网络中数据；
 - **SocketChannel**：通过 TCP 读写网络中数据；
-- **ServerSocketChannel**：可以监听新进来的 TCP 连接，对每一个新进来的连接都会创建一个 **SocketChannel**。
+- **ServerSocketChannel**：可以**监听**新进来的 TCP 连接，对每一个新进来的连接都会创建一个 **SocketChannel**。
 
 ### 缓冲区
 
@@ -1044,9 +1044,76 @@ else
 
 ![单线程Reactor模式](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\单线程Reactor模式.png)
 
+​	以Java NIO说明流程如下：
+
+1. 服务器端的Reactor是一个线程对象，该线程会**启动事件循环**，并使用 Selector 来实现IO的多路复用。**注册**一个 Acceptor事件处理器 到 Reactor 中，Acceptor事件处理器 所关注的事件是 ACCEPT事件，这样 Reactor 会**监听**客户端向服务器端发起的连接请求事件( ACCEPT事件 )。
+2. 客户端向服务器端**发起一个连接请求**，Reactor 监听到了该 ACCEPT事件 的发生并将该 ACCEPT事件 **派发**给相应的 Acceptor处理器 来进行**处理**。Acceptor处理器 通过`accept()`方法得到与这个客户端对应的连接(SocketChannel)，然后将该连接所关注的 READ事件 以及对应的 READ事件处理器 **注册**到 Reactor 中，这样一来 Reactor 就会**监听**该连接的 READ事件 了。或者当你需要向客户端发送数据时，就向 Reactor 注册该连接的 WRITE事件和其处理器。
+3. 当 Reactor **监听到有读或者写事件发生时**，将相关的事件派发给对应的处理器进行处理。比如，读处理器会通过 SocketChannel 的 `read()` 方法读取数据，此时 `read()` 操作可以直接读取到数据，而不会堵塞或等待可读的数据到来。
+4. 每当处理完所有就绪的感兴趣的I/O事件后，Reactor线程 会**再次执行** `select()` 阻塞等待新的事件就绪并将其分派给对应处理器进行处理。
+
+个人总结上述流程：先对客户端的连接请求进行处理，服务器端接受连接后再根据业务需求对某种连接注册相应的事件和事件处理器。也就是说一个连接对应的事件和事件处理器并不是固定的，是可变的。
+
+
+
+​	注意，Reactor的单线程模式的单线程主要是针对于I/O操作而言，也就是所有的I/O的 `accept()、read()、write() 以及 connect()` 操作都在一个线程上完成的。
+
+​	但在目前的单线程Reactor模式中，不仅I/O操作在该Reactor线程上，连非I/O的业务操作也在该线程上进行处理了，这可能会大大延迟I/O请求的响应。所以我们应该将非I/O的业务逻辑操作从Reactor线程上卸载，以此来加速Reactor线程对I/O请求的响应。
+
+​	**个人总结**：就如[套接字NIO实例](#套接字NIO实例)中的代码就是一种单线程Reactor模式的实现，全部工作只有一个线程完成，包括IO操作和非IO操作。该模式有点像基于事件的BIO模式。
+
+### 使用工作者线程池
+
+![工作者线程池Reactor模式](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\工作者线程池Reactor模式.png)
+
+​	**与单线程Reactor模式不同的是，添加了一个工作者线程池，并将非I/O操作（上图中的decode、compute、encode或为新连接注册其它时间和事件处理器）从Reactor线程中移出转交给工作者线程池来执行。**这样能够提高Reactor线程的I/O响应，不至于因为一些耗时的业务逻辑而延迟对后面I/O请求的处理。
+
+使用线程池的优势：
+
+- 通过重用现有的线程而不是创建新线程，可以在处理多个请求时分摊在线程创建和销毁过程产生的巨大开销。
+- 另一个额外的好处是，当请求到达时，工作线程通常已经存在，因此不会由于等待创建线程而延迟任务的执行，从而提高了响应性。
+- 通过适当调整线程池的大小，可以创建足够多的线程以便使处理器保持忙碌状态。同时还可以防止过多线程相互竞争资源而使应用程序耗尽内存或失败。
+
+
+
+​	注意，在上图的改进的版本中，所以的I/O操作依旧由一个Reactor来完成，包括I/O的accept()、read()、write()以及connect()操作。
+
+​	对于一些小容量应用场景，可以使用单线程模型。但是对于高负载、大并发或大数据量的应用场景却不合适，主要原因如下：
+
+- 一个NIO线程同时处理成百上千的链路，性能上无法支撑，即便NIO线程的CPU负荷达到100%，也无法满足海量消息的读取和发送；
+- 当NIO线程负载过重之后，处理速度将变慢，这会导致大量客户端连接超时，超时之后往往会进行重发，这更加重了NIO线程的负载，最终会导致大量消息积压和处理超时，成为系统的性能瓶颈；
+
+
+
+### 多Reactor线程模式
+
+![多Reactor线程模式](C:\Users\Administrator\Desktop\学习\java\Java-learn\img\多Reactor线程模式.png)
+
+​	Reactor线程池中的每一Reactor线程都会有自己的Selector、线程和分发的事件循环逻辑。	
+
+​	mainReactor可以只有一个，但subReactor一般会有多个。**mainReactor线程主要负责接收客户端的连接请求，然后将接收到的SocketChannel传递给subReactor，由subReactor来完成和客户端的通信**。
+
 ​	流程如下：
 
-1. 
+1. **注册**一个 Acceptor事件处理器 到 mainReactor中，Acceptor事件处理器 所关注的事件是 ACCEPT 事件，这样 mainReactor 会**监听**客户端向服务器端发起的连接请求事件(ACCEPT事件)。**启动** mainReactor 的事件循环。
+2. 客户端向服务器端**发起一个连接请求**，mainReactor 监听到了该 ACCEPT事件 并将该 ACCEPT事件 **派发**给 Acceptor处理器 来进行**处理**。Acceptor处理器 通过 `accept()` 方法得到与这个客户端对应的连接(SocketChannel)，然后将这个 SocketChannel 传递给 subReactor 线程池。
+3. subReactor 线程池分配一个 subReactor 线程给这个 SocketChannel，即将 SocketChannel 关注的 READ 事件以及对应的 READ事件处理器 注册到 subReactor 线程中。当然你也可注册 WRITE 事件以及 WRITE 事件处理器到 subReactor 线程中以完成I/O写操作。Reactor线程池 中的每一个 Reactor线程 都会有自己的 Selector、线程和分发的循环逻辑。
+4. 当有**I/O事件就绪**时，相关的 subReactor 就将事件**派发** 给相应的处理器处理。注意，这里 subReactor 线程只负责完成I/O的`read()`操作，在读取到数据后将业务逻辑的处理放入到线程池（处理非IO操作的线程）中完成，若完成业务逻辑后需要返回数据给客户端，则相关的I/O的 `write` 操作还是会被提交回 subReactor 线程来完成。
+
+
+
+​	注意，所以的I/O操作 (包括，I/O的accept()、read()、write()以及connect()操作) 依旧还是在Reactor线程(mainReactor线程 或 subReactor线程)中完成的。**Thread Pool(线程池)仅用来处理非I/O操作的逻辑**。
+
+
+
+​	多Reactor线程模式将”**接受客户端连接请求**“和“**与客户端通信**”分在两个或多个Reactor线程完成。
+
+​	**mainReactor线程负责接受客户端连接请求的操作**，不负责与客户端的通信，而是将建立好的连接转交给 subReactor线程；**subReactor线程主要负责与客户端的通信**。这样服务器端就不会因为IO操作数据量过大而导致连接请求不能即时处理的情况。并且subReactor线程可以通过线程池技术来与客户进行并发式的通信，在多核的操作系统中这能大大提升应用的负载和吞吐量。
+
+### 总结
+
+​	三种实现方式都与线程有关，有着单线程与多线程方式的区别，还有着应用多线程方式的不同。
+
+​	要理解三者的区别，需要将应用中的IO操作和非IO操作分开，也需要理解Reactor的Accpt事件与其它事件，且Reactor模式的关注点是并发处理请求。
 
 # 参考资料
 
