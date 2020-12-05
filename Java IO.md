@@ -650,7 +650,7 @@ ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags,
 
 ​	关于`select`、`poll`和`epoll`后面详细介绍。
 
-​	它可以让单个进程具有处理多个 I/O 事件的能力。又被称为 **Event Driven I/O，即事件驱动 I/O。**
+​	它可以**让单个进程具有处理多个 I/O 事件的能力**。又被称为 **Event Driven I/O，即事件驱动 I/O。**
 
 ​	如果一个 Web 服务器没有 I/O 复用，那么每一个 Socket 连接都需要创建一个线程去处理。如果同时有几万个连接，那么就需要创建相同数量的线程。相比于多进程和多线程技术，I/O 复用不需要进程线程创建和切换的开销，系统开销更小。
 

@@ -266,6 +266,148 @@ public class Test {
 
 ​	这里所指的“相等”，包括代表类的**Class对象的equals()方法、isAssignableFrom()方法、isInstance()方法的返回结果**，也包括了**使用 `instanceof` 关键字做对象所属关系判定等各种情况**。如果没有注意到类加载器的影响，在某些情况下可能会产生具有迷惑性的结果。
 
+​	**个人总结**：由上述得知，类与类加载器的关系不仅是加载与被加载的关系，还有共同确定虚拟机内存中类的唯一性的合作关系。
+
+## 双亲委派模型
+
+​	从 Java虚拟机角度上看，类加载器只有**启动类加载器（Bootstrap ClassLoader，C++语言实现）**和**其他类加载器（Java语言实现）**。启动类加载器属于虚拟机的一部分；其他类加载器独立于虚拟机，全部继承自抽象类 **java.lang.ClassLoader**。
+
+​	从 Java开发人员角度上看，类加载器可以分为三层类加载器、双亲委派的类加载结构（自JDK1.2之后）。这种类加载架构作为 Java类加载的主体结构，虽然这种架构在**Java模块化系统**出现后有一些调整变动，但主体结构未变。
+
+​	*本节内容是针对 JDK 8及之前的版本*
+
+​	三层类加载器包括**启动类加载器**、**扩展类加载器**、**应用程序类加载器**：
+
+- **启动类加载器（Bootstrap ClassLoader）**：
+
+    ​	此类加载器负责将存放在 **<JRE_HOME>\lib** 目录中的，或者被 `-Xbootclasspath`  参数所指定的路径中的，并且是虚拟机识别的（**仅按照文件名识别**，如 rt.jar，名字不符合的类库即使放在 lib  目录中也不会被加载）类库加载到虚拟机内存中。启动类加载器无法被 Java  程序直接引用，用户在编写自定义类加载器时，如果需要把加载请求委派给启动类加载器，直接使用 null 代替即可（java.lang.ClassLoader.getClassLoader()方法返回null）。
+
+- **扩展类加载器（Extension ClassLoader）**：
+
+    ​	这个类加载器是由 **ExtClassLoader（sun.misc.Launcher$ExtClassLoader）以 Java代码形式实现**的。它负责将**<JAVA_HOME>/lib/ext** 或者被 `java.ext.dirs`  系统变量所指定路径中的所有类库加载到内存中，开发者可以直接使用扩展类加载器来加载Class文件。
+
+- **应用程序类加载器（Application ClassLoader）**：
+
+    ​	这个类加载器是由 **AppClassLoader（sun.misc.Launcher$AppClassLoader）以 Java代码形式实现**的。由于这个类加载器是  ClassLoader 中的 **getSystemClassLoader()  方法的返回值**，因此一般称为**系统类加载器**。它**负责加载用户类路径（ClassPath）上所指定的类库**，这些类可以在使用 `-cp` 或 `-classpath` 命令行选项调用程序时设置。开发者可以直接使用这个类加载器，如果应用程序中没有自定义过自己的类加载器，一般情况下这个就是程序中默认的类加载器。
+
+
+
+​	JDK 9之前，Java应用程序都是由上述的三种类加载器相互配合来完成加载的，用户也可以自定义类加载器进行扩展。下图展示了类加载器之间的协作关系，称**为双亲委派模型**，是最常用类加载器协作关系模型。
+
+
+
+<img src="C:\Users\Administrator\Desktop\学习\java\Java-learn\Java虚拟机\img\双亲委派模型.png" alt="双亲委派模型" style="zoom: 80%;" />
+
+​	双亲委派模型要求除了启动类加载器外，其余的类加载器都应有自己的父类加载器。不过该模型下类加载器之间的父子关系**一般不是以继承的方式实现**的，而是**以组合的方式实现**的。
+
+​	双亲委派模型的**工作过程**：
+
+1. 类加载器收到一个类的加载请求（该类没有被加载过）；
+2. 类加载器委托其父类加载器去完成加载，重复该步骤直到将请求传送至“祖先”类加载器；
+3. 如果当前父类加载器无法完成这个加载请求（它的搜索范围内没有找到这个类），那么将加载请求回送给其子类加载器去完成加载，重复该步骤直到能够加载完成；
+
+​	这个过程就像是回旋镖，分为两个方向，丢出（找爸爸）和回旋（无法加载）。丢出的方向不会停止，只有到尽头（没有父类加载器）就会开始回旋；回旋的方向遇到障碍（当前类加载器能够完成加载）就会停止。
+
+​	采用双亲委派模型组织类加载器之间的关系有如下**好处**：
+
+- 类随着加载它的类加载器一起具备了带有优先级的层次关系，例如父类加载器和子类加载器的搜索范围都有该类的class文件（二进制字节流），那么父类加载器会先完成加载，而子类就不需要加载该类；
+- 可以避免同一个类被不同类加载器多次加载（造成混乱），保证了类在程序的各种类加载器环境中都是同一个类（即类的唯一性得到保证，一致性问题）；
+
+
+
+​	双亲委派模型的**实现**代码如下：
+
+```java
+public class MyClassLoader extends ClassLoader {
+
+    private ClassLoader parent;
+
+    public MyClassLoader() {
+    }
+
+    public MyClassLoader(ClassLoader parent) {
+        this.parent = parent;
+    }
+
+    @Override
+    public synchronized Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+        Class c = findLoadedClass(name);
+        if (c == null) {
+            try {
+                if (parent != null) {
+                    c = parent.loadClass(name);
+                } else {
+                   	// 找启动类加载器
+                }
+            } catch (ClassNotFoundException e) {
+              	// 父类加载器抛出该异常，表明父类无法加载
+            }
+            if (c == null) {
+                c = findClass(name);
+            }
+        }
+        if (resolve) {
+            resolveClass(c);
+        }
+        return c;
+    }
+
+    @Override
+    protected Class<?> findClass(String name) throws ClassNotFoundException {
+        byte[] b = getClassFile();
+        if (b == null) {
+            throw new ClassNotFoundException();
+        }
+        return super.defineClass(name, b, 0, b.length); // 也可重写defineClass
+    }
+    
+    private byte[] getClassFile() {
+        byte[] b = new byte[4096];
+        // 从某个地方获取class文件（二进制字节流）
+        return b;
+    }
+}
+
+```
+
+​	主要是 **loadClass()**方法，在该方法中判断父类加载器是否存在，如果有就交给父类加载器去加载。代码中使用了组合的方式实现父子关系。对于 **findClass()**方法和 **defineClass()**方法，可以根据具体需求重写。用户在自定义类加载器时，可以不重写 **loadClass()**方法，因为 **java.lang.ClassLoader.loadClass()**方法已经实现了双亲委派模型的逻辑，用户自定义类加载器时，只需重写 **findClass()**方法即可。
+
+
+
+​	**个人总结**：双亲委派模型像是设计模式，是开发人员在编写代码时的规范或建议，并不意味着必须这么做。即开发人员在编写自定义类加载器时，可以不委派父类加载器，甚至可以不实现类加载器之间父子关系。
+
+## 破坏双亲委派模型
+
+​	双亲委派模型主要出现过3次较大规模“被破坏” 的情况。第一次是发生在双亲委派模型出现之前；第二次是发生在基础类型（越上层的类加载器加载的类型越基础）需要调用用户代码的情况，例如 JNDI服务；第三次是用户对程序动态性的追求所导致的，这里的动态性是指**代码热替换**、**模块热部署**等，即后面说的 Java模块化系统。
+
+​	这里不详细介绍这三种情况的细节，只是为了 Java模块化系统做铺垫。这里提一下第二次“被破坏”时的解决方案，引入了不优雅的**线程上下文加载器**，和之后的 **ServiceLoader**类。
+
+### OSGi
+
+​	OSGi（开放服务网关协议，Open Service Gateway Initiative）技术是 Java动态化模块化系统的一系列**规范**。OSGi实现模块化热部署的关键是**它自定义的类加载器的实现，每个程序模块（Bundle）都有一个自己的类加载器，当需要更换一个 Bundle 时，就把 Bundle 连同类加载器一起换掉以实现代码的热替换**。由此看出OSGi环境下的类加载器不再是双亲委派模型的结构，而是一种更加复杂的网状结构。
+
+​	当OSGi 收到类加载请求时，会按一下顺序进行类搜索：
+
+1. 将以 `java.*` 开头的类，委派给父类加载器加载；
+2. 否则，将委派列表名单内的类，委派给父类加载器加载；
+3. 否则，将 Import列表中的类，委派给 Export 这个类的 Bundle 的类加载器加载；
+4. 否则，查找当前 Bundle 的 ClassPath，使用自己的类加载器加载；
+5. 否则，查找类是否在自己的 Fragment Bundle 中，如果在，则委派给 Fragment Bundle 的类加载器加载；
+6. 否则，查找 Dynamic Import 列表的 Bundle，委派给对应 Bundle 的类加载器加载；
+7. 否则，类查找失败。
+
+​	上面的查找顺序只有开头两点符合双亲委派模型的原则，其余的类查找都是在平级的类加载器中进行的。
+
+
+
+​	**个人总结**：OSGi 就是不同于双亲委派模型的另一种类加载器架构，目的是为了实现“热插拔”效果。
+
+​	OSGi —— 日后研究！
+
+# Java模块化系统
+
+
+
 # 参考资料
 
 《深入理解Java虚拟机：Java高级特性与最佳实践》第三版（该书的第7章）——周志明著
