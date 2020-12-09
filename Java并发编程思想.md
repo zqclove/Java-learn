@@ -273,6 +273,68 @@ class VolatileCache {
 
 ​	个人理解封装为通过 `private` 关键字修饰状态，使得修改状态的入口只有特定的方法。而在这些特定的方法上加上加锁策略，就能实现线程安全，即使封装的是非线程安全的对象。但需要注意的是，被封装的对象一定不能超过它们既定的作用域（不能逸出）。
 
+​	通过封闭机制能更易于构建线程安全的类，但不意味着实例封闭就是线程安全，因为可以通过发布被封闭的对象造成逸出，导致线程不安全。
+
+​	关于实例封闭的例子在 Java的类库中有很多，例如一些基本的容器类，ArrayList、HashMap等就是非线程安全类，但通过包装器工厂方法（如Collections.synchronizedList），便使得这些非线程安全的类可以在多线程环境中安全地使用。其实现原理主要是将容器类封装在一个同步的包装器对象中，包装器能将接口中的每个方法都实现为同步方法，并将调用请求转发给底层容器类对象。只要包装器对象拥有对底层容器对象的唯一引用（即把底层容器对象封闭在包装器对象中），那么它就是线程安全的。可以将包装器对象想象为一个中间件，是一个供外部调用的对象，且每个方法都是同步的，而调用包装器对象时，真正调用的时底层容器对象的方法。
+
+------
+
+​	在该节中，提到 Java监视器模式。对于这个模式的理解，我认为是实例封闭的一种规范，该规范会将对象的所有可变状态都封装起来，并由对象自己的内置锁来保护，即可变状态只能通过加锁的公开方法访问，并且一些获取状态的操作都是通过深拷贝和不可修改方式返回。
+
+​	下面展示一个应用 Java监视器模式的例子，OrderInfoModel类定义为拥有系统全部客户的全部订单的类，该类是线程安全的，而其中的Order类是线程不安全的，
+
+```java
+public class OrderInfoModel {
+    private final Map<Integer, List<Order>> allOrders;
+
+    public OrderInfoModel(Map<Integer, List<Order>> allOrders) {
+        this.allOrders = allOrders;
+    }
+
+    public synchronized Map<Integer, List<Order>> getAllOrders() {
+        return deepCopy(allOrders);
+    }
+
+    public synchronized List<Order> getOrdersByUserId(Integer userid) {
+        return allOrders.containsKey(userid) ? 
+        	new ArrayList<>(allOrders.get(userid)) : null;
+    }
+
+    public synchronized void setOrdersByUserId(Integer userid, List<Order> orders) {
+        if (!allOrders.containsKey(userid)) {
+            throw new IllegalArgumentException();
+        }
+        List<Order> src = allOrders.get(userid);
+        // src = orders; //这里如果这样子赋值，就会将对象发布出去，导致逃逸，实例封闭就会被破坏
+        src = new ArrayList<Order>(orders);
+    }
+
+    private static Map<Integer, List<Order>> deepCopy(Map<Integer, List<Order>> src) {
+        Map<Integer, List<Order>> dist = new HashMap<>();
+        for (Integer userid : src.keySet()) {
+            dist.put(userid, new ArrayList<>(src.get(userid)));
+        }
+        return dist;
+    }
+}
+
+public class Order {
+    private int id;
+    private int userid;
+    private int itemid;
+    private long time;
+    
+    public Order(int id, int userid, int itemid) {
+        super();
+        this.id = id;
+        this.userid = userid;
+        this.itemid = itemid;
+        this.time = System.currentTimeMillis();
+    }
+    void getterANDsetter();
+}
+```
+
 
 
 # 参考资料
